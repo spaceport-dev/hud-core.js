@@ -14,7 +14,7 @@ See also: [Launchpad](https://spaceport.com.co/docs/launchpad#hud-core) for more
 
 ## Usage
 
-View the latest release at: [https://www.jsdelivr.com/package/gh/spaceport-dev/hud-core.js]
+View the latest release at: [https://cdn.jsdelivr.net/gh/spaceport-dev/hud-core.js/]
 
 Each release includes a minified version for production usage.
 
