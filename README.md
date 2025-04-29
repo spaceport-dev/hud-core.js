@@ -19,7 +19,7 @@ View the latest release at: [https://cdn.jsdelivr.net/gh/spaceport-dev/hud-core.
 Each release includes a minified version for production usage.
 
 ```html
-<script defer src='https://cdn.jsdelivr.net/gh/spaceport-dev/hud-core.js@1.0.0/hud-core.min.js'>
+<script defer src='https://cdn.jsdelivr.net/gh/spaceport-dev/hud-core.js@latest/hud-core.min.js'>
 ```
 
 ## Learn more
