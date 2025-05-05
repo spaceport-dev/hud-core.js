@@ -1,4 +1,4 @@
-![HUD-CORE Graphic](https://spaceport.com.co/assets/hud-core-graphic.svg?t "HUD-CORE Graphic")
+<img src=https://spaceport.com.co/assets/hud-core-graphic.svg width=250>
 
 # HUD-CORE
 HUD-CORE.js provides the client-side functionality needed for Spaceport's Launchpad
