@@ -1,4 +1,4 @@
-// HUD-CORE v1.1.0
+// HUD-CORE v1.0.0
 
 // This file enabled web-HUD features for Launchpad, the reative
 // templating engine for Spaceport. Include this file in your
@@ -1437,6 +1437,9 @@ function setupHREF(element) {
                     } else ell = ell.parentElement
                 }
         })
+
+        if (!element.hasAttribute('tabindex'))
+            element.setAttribute('tabindex', '0')
 
         element.addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
