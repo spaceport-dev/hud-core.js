@@ -1,4 +1,4 @@
-// HUD-CORE v1.0.0
+// HUD-CORE v1.1.0
 
 // This file enabled web-HUD features for Launchpad, the reative
 // templating engine for Spaceport. Include this file in your
@@ -473,6 +473,8 @@ function setupOnAttribute(eventName, element) {
 // update to the DOM with the response.
 async function fetchDataAndUpdate(event, url) {
 
+    console.log('Triggered Event', event)
+
     // If the target element has resulted in a fatal-error from a previous
     // rendering, then don't fetch data again.
 
@@ -505,10 +507,10 @@ async function fetchDataAndUpdate(event, url) {
         }
     }
 
-    // Allow the source to be a querySelector of a parent element
+    // Allow the activeTarget to be a querySelector of a parent element
     if (event.currentTarget?.getAttribute('source')
-            && event.target.getAttribute('source') !== 'auto'
-            && event.currentTarget.getAttribute('source') !== 'auto') {
+        && event.target.getAttribute('source') !== 'auto'
+        && event.currentTarget.getAttribute('source') !== 'auto') {
         let checkElement = event.target
         while (checkElement) {
             if (checkElement.matches(event.currentTarget.getAttribute('source'))) {
@@ -529,6 +531,7 @@ async function fetchDataAndUpdate(event, url) {
                 }
             }
         }
+        if (checkElement === null) console.log('No source match. Checking IDs.')
         // Or, just a straight up ID
         if ( checkElement === null && event.currentTarget.getAttribute('source').startsWith('#')) {
             activeTarget = document.querySelector(event.currentTarget.getAttribute('source'))
@@ -671,6 +674,12 @@ async function fetchDataAndUpdate(event, url) {
         }
     }
 
+    // Include client-side binding attribute
+    if (activeTarget.hasAttribute('bind')) {
+        postData['bind'] = activeTarget.getAttribute('bind')
+    }
+
+    // Include the ID of the element, if it exists
     if (activeTarget.id) {
         postData['elementId'] = activeTarget.id
     }
@@ -684,6 +693,7 @@ async function fetchDataAndUpdate(event, url) {
 
     // console.log('Text Content: ' + activeTarget.textContent)
     postData['textContent'] = activeTarget.textContent?.trim();
+
 
 
     //
@@ -1447,7 +1457,135 @@ function setupHREF(element) {
 
 // DocumentData is a way to pass data from the server to the client and update
 // any elements that are bound to the data.
-var documentData = {}
+
+// Create a handler for the Proxy
+const documentDataHandler = {
+    set: function(target, property, value) {
+        // console.log(`DOCUMENT_DATA SET: ${String(property)} = ${value}`)
+        target[property] = value
+        // Call refreshDocumentData after a property is set
+        refreshDocumentData()
+        return true  // Indicate success
+    },
+    deleteProperty: function(target, property) {
+        // console.log(`DOCUMENT_DATA DELETE: ${String(property)}`)
+        delete target[property]
+        // Call refreshDocumentData after a property is deleted
+        refreshDocumentData()
+        return true  // Indicate success
+    }
+}
+
+
+// Initialize documentData as a Proxy
+var documentData = new Proxy({}, documentDataHandler)
+
+
+/**
+ * Sets a property on the documentData object using dot notation.
+ * If intermediate objects in the path do not exist, they will be created
+ * as reactive Proxies. Setting a value will trigger any bound elements to refresh.
+ *
+ * @param {string} path - The dot-notation path to the property (e.g., "user.profile.name").
+ * @param {*} value - The value to set at the specified path.
+ */
+function setDocumentDataProperty(path, value) {
+    if (typeof path !== 'string' || path.trim() === '') {
+        console.error('setDocumentDataProperty: Path must be a non-empty string.');
+        return
+    }
+
+    const keys = path.split('.')
+    let current = documentData // Start with the root reactive object
+
+    // Traverse or create the path up to the parent of the final property
+    for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i]
+
+        // Check if the current level is an object. If not, we can't proceed.
+        if (typeof current !== 'object' || current === null) {
+            console.error(`setDocumentDataProperty: Cannot create/traverse path. Segment '${keys.slice(0, i).join('.')}' is not an object:`, current)
+            return
+        }
+
+        // If the next key doesn't exist on the current object, or if it's not an object itself,
+        // we need to create a new reactive object (proxy) at this key.
+        // The assignment `current[key] = {}` will trigger the `set` trap of `current` (if `current` is a proxy).
+        // The `set` trap, through `makeReactive`, will ensure the new empty object `{}` becomes a proxy.
+        if (!Object.prototype.hasOwnProperty.call(current, key) ||
+            typeof current[key] !== 'object' ||
+            current[key] === null) {
+            // This assignment invokes the 'set' trap of the 'current' proxy.
+            // The 'set' trap will then use 'makeReactive' to ensure that the new
+            // empty object becomes a reactive proxy.
+            current[key] = {}
+        }
+
+        current = current[key] // Move to the next object in the path.
+    }
+
+    // Set the value on the final key of the path.
+    const lastKey = keys[keys.length - 1]
+
+    if (typeof current !== 'object' || current === null) {
+        console.error(`setDocumentDataProperty: Cannot set final property. Parent at path '${keys.slice(0, -1).join('.')}' is not an object:`, current)
+        return
+    }
+
+    // This assignment also goes through the 'set' trap of the 'current' proxy (the parent object).
+    // The 'set' trap will make 'value' reactive if it's an object/array
+    // and will trigger refreshDocumentData().
+    current[lastKey] = value
+}
+
+
+/**
+ * Writes a new value to the documentData object at the path specified by the 'bind' attribute.
+ *
+ * @param newValue
+ */
+HTMLElement.prototype.hudWrite = function(newValue) {
+    if (this.hasAttribute('bind')) {
+        const path = this.getAttribute('bind')
+        if (path) { // Ensure path is not empty
+            setDocumentDataProperty(path, newValue)
+        } else {
+            console.warn('Element has "bind" attribute, but it is empty. hudWrite ignored.', this)
+        }
+    } else {
+        // Optional: Log a warning if called on an element without a 'bind' attribute.
+        // console.warn('hudWrite called on an element without a "bind" attribute.', this);
+    }
+}
+
+
+/**
+ * Reads the value reactively bound to this element using the 'bind' attribute.
+ *
+ * @returns {any} The value bound to this element, or undefined if the path doesn't exist.
+ */
+HTMLElement.prototype.hudRead = function() {
+    if (this.hasAttribute('bind')) {
+        const path = this.getAttribute('bind')
+        if (path) { // Ensure path is not empty
+            let value = documentData
+            const keys = path.split('.')
+            for (let key of keys) {
+                if (value && typeof value === 'object' && key in value) {
+                    value = value[key]
+                } else {
+                    return undefined // Path doesn't exist
+                }
+            }
+            return value
+        } else {
+            console.warn('Element has "bind" attribute, but it is empty. hudRead ignored.', this)
+        }
+    } else {
+        // Optional: Log a warning if called on an element without a 'bind' attribute.
+        // console.warn('hudRead called on an element without a "bind" attribute.', this);
+    }
+}
 
 
 // Scans for DocumentData comments
@@ -1463,16 +1601,19 @@ function scanForComments(node) {
 
 
 // Utility for DocumentData
-function deepMerge(target, source) {
+function deepMerge(target, source, rootProxy) {
     for (let key in source) {
-        if (typeof source[key] === 'object' && source[key] !== null) {
-            if (!target[key]) {
-                target[key] = {};
+        if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
+            if (!target[key] || typeof target[key] !== 'object') {
+                // If the target property doesn't exist or isn't an object, create a new proxy for it
+                // This ensures nested objects also trigger refreshDocumentData
+                target[key] = new Proxy({}, documentDataHandler);
             }
-            deepMerge(target[key], source[key]);
+            deepMerge(target[key], source[key], rootProxy); // Pass rootProxy for refresh call
         } else {
+            // Directly set the value. The proxy's 'set' handler on the appropriate level
+            // (either root or nested proxy) will take care of calling refreshDocumentData.
             target[key] = source[key];
-
         }
     }
 }
@@ -1482,89 +1623,169 @@ function parseForDocumentData(node) {
     // console.log(node.nodeValue)
     if (!node.nodeValue.startsWith('<![CDATA[')) { return }
     let cData = JSON.parse(node.nodeValue.replace('<![CDATA[', '').replace(']]>', ''))
-    // append to documentData
+
+    // Temporarily disable refresh during bulk update by creating a temporary non-proxied object for merging
+    let tempDocumentData = JSON.parse(JSON.stringify(documentData)); // Create a deep clone without proxies
+
     if (cData.append) {
-        deepMerge(documentData, cData);
-        delete documentData.append; // Remove the "append" flag after merging
+        // For deepMerge, we want to merge into the actual target (tempDocumentData)
+        // The proxy will handle individual assignments if we were to assign directly.
+        // However, for a bulk update, it's more efficient to merge into a temp object
+        // and then assign back to the proxied documentData, or update properties one by one
+        // if we want fine-grained proxy trapping on each sub-property.
+
+        // Simpler approach for cData.append: iterate and assign to the proxy
+        // This will trigger the proxy's set handler for each top-level property in cData.
+        // For deeper properties within cData, ensure deepMerge correctly creates nested proxies.
+        const dataToMerge = { ...cData }; // Clone cData
+        delete dataToMerge.append; // Remove the "append" flag before merging
+
+        deepMerge(documentData, dataToMerge, documentData); // Merge into the proxy
+
     } else {
+        // Assign properties directly to the proxy to trigger the 'set' handler
         for (let key in cData) {
-            // console.log(`DOCUMENT DATA -> ${key} = ${cData[key]}`)
-            documentData[key] = cData[key]
+            // console.log(`DOCUMENT DATA (cData) -> ${key} = ${cData[key]}`)
+            // If cData[key] is an object, we need to ensure it becomes a proxy too,
+            // or its nested properties won't trigger refreshDocumentData.
+            if (typeof cData[key] === 'object' && cData[key] !== null && !Array.isArray(cData[key])) {
+                // If the existing documentData[key] is not a proxy or doesn't exist, create one
+                if (!(documentData[key] instanceof Object) || !('_isProxy' in documentData[key])) { // A simple check, could be more robust
+                    documentData[key] = new Proxy({}, documentDataHandler);
+                    // Add a flag to identify it as a proxy if needed, though instanceof Proxy isn't reliable
+                    // Object.defineProperty(documentData[key], '_isProxy', { value: true, enumerable: false });
+                }
+                deepMerge(documentData[key], cData[key], documentData);
+            } else {
+                documentData[key] = cData[key]; // This will trigger the proxy's set handler
+            }
         }
     }
-    refreshDocumentData()
+    // The proxy's 'set' handlers should have called refreshDocumentData for each change.
+    // refreshDocumentData();
 }
 
 
 function refreshDocumentData() {
-    document.querySelectorAll('[bind]').forEach(    element => {
-        const key = element.getAttribute('bind')
-        // Update the elements only if the value has changed
-        if (key in documentData) {
-            if (element.setValue) {
-                if (element.getValue) {
-                    if (element.getValue() !== documentData[key]) {
-                        element.setValue(documentData[key])
-                        element.dispatchEvent(new Event('change'))
-                        // console.log(`SETVALUE -> ${element.tagName} [bind=${key}]`)
-                    }
-                } else {
-                    element.setValue(documentData[key])
-                    element.dispatchEvent(new Event('change'))
-                    // console.log(`SETVALUE -> ${element.tagName} [bind=${key}]`)
-                }
-            } else if (element.value != null) {
-                if (element.value !== documentData[key]) {
-                    element.value = documentData[key]
-                    // Fire change event
-                    element.dispatchEvent(new Event('change'))
-                    // console.log(`VALUE -> ${element.tagName} [bind=${key}]`)
-                }
-            } else {
-                if (element.innerHTML !== documentData[key]) {
-                    element.innerHTML = documentData[key]
-                    // console.log(`REFRESHED -> ${element.tagName} [bind=${key}]`)
-                    element.dispatchEvent(new Event('change'))
-                }
-            }
-        }
+    // console.log('Refreshing document data, current state:', JSON.parse(JSON.stringify(documentData)));
+    document.querySelectorAll('[bind]').forEach(element => {
+        const key = element.getAttribute('bind');
+        let valueToSet;
+        let keyExists = false;
+
         // Check for 'dot' notation for nested objects
         if (key.includes('.')) {
-            let parts = key.split('.')
-            let data = documentData
+            let parts = key.split('.');
+            let current = documentData;
+            let pathExists = true;
             for (let i = 0; i < parts.length; i++) {
-                if (data[parts[i]]) {
-                    data = data[parts[i]]
+                if (current && typeof current === 'object' && parts[i] in current) {
+                    current = current[parts[i]];
+                } else {
+                    pathExists = false;
+                    break;
                 }
             }
-            if (element.setValue) {
-                if (element.getValue) {
-                    if (element.getValue() !== data) {
-                        element.setValue(data)
-                        element.dispatchEvent(new Event('change'))
-                        // console.log(`SETVALUE -> ${element.tagName} [bind=${key}]`)
+            if (pathExists) {
+                valueToSet = current;
+                keyExists = true;
+            }
+        } else if (key in documentData) { // Direct key
+            valueToSet = documentData[key];
+            keyExists = true;
+        }
+
+        if (keyExists) {
+            if (element.setValue && typeof element.setValue === 'function') {
+                // If the element has a custom .setValue() method, pass the raw value.
+                // The custom element is responsible for handling the data type.
+                if (element.getValue && typeof element.getValue === 'function') {
+                    if (element.getValue() !== valueToSet) {
+                        element.setValue(valueToSet);
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 } else {
-                    element.setValue(data)
-                    element.dispatchEvent(new Event('change'))
-                    // console.log(`SETVALUE -> ${element.tagName} [bind=${key}]`)
-                }
-                // console.log(`SETVALUE -> ${element.tagName} [bind=${key}]`)
-            } else if (element.value) {
-                if (element.value !== data) {
-                    element.value = data
-                    element.dispatchEvent(new Event('change'))
-                    // console.log(`VALUE -> ${element.tagName} [bind=${key}]`)
+                    element.setValue(valueToSet);
+                    element.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             } else {
-                if (element.innerHTML !== data) {
-                    element.innerHTML = data
-                    element.dispatchEvent(new Event('change'))
-                    // console.log(`REFRESHED -> ${element.tagName} [bind=${key}]`)
+                // For standard .value or .innerHTML, first format the value for display.
+                const displayValue = formatForDisplay(valueToSet);
+
+                if (typeof element.value !== 'undefined' &&
+                    // Be more specific about elements that use the 'value' property for primary content
+                    (element.tagName === 'INPUT' ||
+                        element.tagName === 'TEXTAREA' ||
+                        element.tagName === 'SELECT' ||
+                        element.tagName === 'OPTION' || // Though typically its text content or parent select's value is bound
+                        element.tagName === 'PROGRESS' ||
+                        element.tagName === 'METER'
+                        /* Add other relevant tags if necessary */
+                    )) {
+                    // For elements with a 'value' property (typically form elements)
+                    if (element.value !== displayValue) {
+                        element.value = displayValue
+                        element.dispatchEvent(new Event('change', { bubbles: true }))
+                    }
+                } else if(element.value !== undefined) { // Allow for 'custom' elements that might have a .value mechanism
+                    element.value = displayValue
+                    element.dispatchEvent(new Event('change', { bubbles: true })) // Dispatch change for consistency
+                } else {
+                    // For other elements, update innerHTML.
+                    if (element.innerHTML !== displayValue) {
+                        element.innerHTML = displayValue
+                        element.dispatchEvent(new Event('change', { bubbles: true })) // Dispatch change for consistency
+                    }
                 }
             }
+        } else {
+            // console.log(`Key "${key}" not found in documentData for element ${element.tagName}`, element, documentData);
         }
-    })
+    });
+}
+
+
+ // Formats a value for display in the UI (element.value or element.innerHTML).
+ // Avoids showing "[Object object]" or function bodies.
+function formatForDisplay(value) {
+    if (value === null || typeof value === 'undefined') {
+        return '' // Display null or undefined as an empty string
+    }
+
+    const type = typeof value
+
+    if (type === 'string' || type === 'number' || type === 'boolean') {
+        return String(value); // These are generally safe to display as is
+    }
+
+    if (type === 'function') {
+        return ''  // Don't display function bodies; an empty string is often best for UI
+
+    }
+
+    if (Array.isArray(value)) {
+        // For arrays, a simple comma-separated list if it contains primitives.
+        return value.every(item => ['string', 'number', 'boolean'].includes(typeof item))
+                          ? value.join(', ')
+                          : '[Array]'
+    }
+
+    if (type === 'object') {
+        // For generic objects, avoid "[object Object]".
+        // An empty string or a placeholder is usually best.
+        return ''
+    }
+
+    // if HTMLElement
+    if (value instanceof HTMLElement) {
+        // For DOM elements, return their outerHTML or a placeholder
+        return value.outerHTML || '[Element]'
+    }
+
+    // Fallback for any other types (e.g., Symbol, BigInt)
+    // This will use their default string conversion, which might still be like "[Symbol symbol]"
+    // but these are less common in typical UI-bound data.
+    return String(value)
 }
 
 
