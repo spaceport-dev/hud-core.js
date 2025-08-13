@@ -278,3 +278,111 @@ Here, we're iterating through a list of participants. The `on-click` action need
     </span>
 </div>
 ```
+
+
+## **UI/UX Pattern Examples**
+
+### **Pattern 1: Edit-in-Place**
+
+This pattern allows users to click an "Edit" button to turn a piece of text into an input field, and then save their changes. It makes great use of `target="outer"` to swap between a "view" state and an "edit" state.
+
+```groovy
+<%
+    // Assume 'user' is a document object with a 'name' property
+    def userName = user.name
+
+    // Closure to show the editing UI
+    def showEditUI = {
+        // Use a Groovy multi-line string to define the HTML for the edit state
+        return """
+        <div id="user-profile" target="outer">
+            <input type="text" name="newName" value="${userName.escape()}">
+            <button on-click=${ _{ t -> saveUserName(t.newName) }}>Save</button>
+            <button on-click=${ _{ showViewUI() }}>Cancel</button>
+        </div>
+        """
+    }
+
+    // Closure to save the new name and show the view UI
+    def saveUserName = { newName ->
+        user.name = newName
+        user.save()
+        // After saving, return the view state UI
+        return showViewUI()
+    }
+
+    // Closure to show the viewing UI
+    def showViewUI = {
+        return """
+        <div id="user-profile" target="outer">
+            <span>${user.name.escape()}</span>
+            <button on-click=${ _{ showEditUI() }}>Edit</button>
+        </div>
+        """
+    }
+%>
+
+<!-- Initial state of the component -->
+<div id="user-profile" target="outer">
+    <span>${userName.escape()}</span>
+    <button on-click=${ _{ showEditUI() }}>Edit</button>
+</div>
+```
+
+### **Pattern 2: "Load More" Button**
+
+This pattern is used for paginating through a long list of items without full page reloads. It uses the `append` transmission to add new items to the list and can hide itself when there's no more data.
+
+```groovy
+<%
+    // Server-side function to fetch a "page" of items
+    def getItems = { page = 0, perPage = 5 ->
+        // In a real app, this would be a database query
+        def allItems = (1..20).collect { "Item #$it" }
+        def start = page * perPage
+        def end = Math.min(start + perPage, allItems.size())
+        if (start >= allItems.size()) return [:]
+        return [
+            items: allItems[start..<end],
+            hasMore: end < allItems.size()
+        ]
+    }
+
+    // Closure for the button's on-click event
+    def loadMoreItems = { t ->
+        // Get the next page number from the button's data attribute
+        def nextPage = t.page.toInteger()
+        def results = getItems(nextPage)
+
+        // Build the HTML for the new items
+        def newItemsHtml = results.items.collect { "<li>${it}</li>" }.join('')
+
+        // Build the transmission
+        def transmission = [
+            // Use 'append' on the <ul> to add the new items
+            append: newItemsHtml,
+            // Update the button's data-page attribute for the next click
+            '#page': nextPage + 1
+        ]
+
+        // If there are no more items, add an instruction to hide the button
+        if (!results.hasMore) {
+            transmission['@hide'] = 'it' // 'it' refers to the button itself
+        }
+
+        return transmission
+    }
+%>
+
+<ul id="item-list">
+    <% getItems().items.each { item -> %>
+        <li>${item}</li>
+    <% } %>
+</ul>
+
+<button target="#item-list"
+        data-page="1"
+        on-click=${ _{ t -> loadMoreItems(t) }}>
+    Load More
+</button>
+```
