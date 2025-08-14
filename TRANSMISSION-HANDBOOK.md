@@ -31,7 +31,7 @@ Why use Transmissions? To eliminate the need for custom JavaScript for common UI
 **Core Example:** Here is a simple button that updates itself after being clicked.
 
 ```html
-<button target="self" on-click=${ _{ ['innerText': 'Confirmed!', '+confirmed': 'it'] } }>
+<button target="self" on-click=${ _{ ['innerText': 'Confirmed!', '+confirmed': 'it'] }}>
     Confirm
 </button>
 ```
@@ -131,12 +131,60 @@ When a Launchpad event is triggered, a rich payload of contextual data is automa
 | :--- | :--- | :--- |
 | **Element Value** | `value` | The primary value of the element. This is intelligently determined: it can be an `<input>`'s text, a checkbox's state, a file's content as Base64, or the trimmed `innerHTML` of a standard element. |
 | **Element Info** | `elementId`, `tagName`, `classList`, `innerText`, `textContent` | Core properties of the `activeTarget` element (see `source` attribute below). |
-| **Event Info** | `key`, `keyCode`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `repeat` | Details for keyboard events. |
+| **Event Info** | `key`, `keyCode`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `repeat` | Details for keyboard events. Note: shiftKey, ctrlKey, etc. appear only if `true`. |
 | | `clientX`, `clientY`, `pageX`, `pageY`, `button`, `buttons`, `offsetX`, `offsetY`, `movementX`, `movementY` | Details for mouse events. |
 | **Form Data** | `[input-name]` | If the element is inside a `<form>`, all named inputs from that form are automatically included by their `name` attribute. Launchpad correctly handles text fields, textareas, checkboxes, radio buttons, select lists (single and multiple), and file inputs. |
 | **Custom Data** | `[data-attribute]` | All `data-*` attributes on the element are sent as top-level properties in the `t` object (e.g., `data-user-id="123"` becomes `t.userId`). |
 | **URL Data** | `[query-param]` | All query parameters from the current page's URL are included as top-level properties. |
 | **Included Data** | `[storage-key]` | You can use the `include` attribute on an element to explicitly send specific `localStorage` (`*key`) or `sessionStorage` (`~key`) values. You can also include standard element attributes by name (e.g., `include="id, *theme"`). |
+
+Of course. Here is the Markdown for that section.
+
+### **Working with the `t` Object on the Server**
+
+The `t` object gives your server-side Groovy code direct access to all the data sent from the client. However, since this data comes from HTML attributes and form fields, it often arrives as strings. To make working with this data easier and safer, the `t` object is equipped with several helper methods to reliably convert these values into the data types you need.
+
+| Method | Description | Example Usage |
+| :--- | :--- | :--- |
+| `t.getString('key')` | Safely converts the value of the given key to a `String`. | `def name = t.getString('username')` |
+| `t.getBool('key')` | Coerces the value into a `boolean`. Handles `"true"`, `"on"`, `"yes"`, and checkbox states. Returns `false` for other values. | `def isAdmin = t.getBool('isAdmin')` |
+| `t.getNumber('key')` | Intelligently converts the value to a `Long` or `Double`, depending on whether it contains a decimal point. Returns `0L` on failure. | `def price = t.getNumber('itemPrice')` |
+| `t.getInteger('key')` | Coerces the value into an `Integer`. Returns `0` on failure. | `def quantity = t.getInteger('quantity')` |
+| `t.getList('key')` | Converts a value into a `List`. It can parse comma-separated strings, JSON arrays, or wrap a single item in a list. | `def tags = t.getList('tags')` |
+
+**Example: Using Helpers in a Server Action**
+
+```groovy
+<%
+def processOrder = { t ->
+    // Direct access might give you a string "5"
+    def quantityStr = t.quantity 
+    
+    // Using a helper ensures you get an Integer for calculations
+    def quantity = t.getInteger('quantity') // Safely returns 5 (Integer)
+
+    // A checkbox might send "on" or just exist if checked
+    def isPriority = t.getBool('priorityShipping') // Safely returns true or false
+
+    // A data attribute might be a string "19.99"
+    def price = t.getNumber('price') // Safely returns 19.99 (Double)
+
+    if (isPriority && quantity > 0) {
+        // ... process order with correct data types
+    }
+
+    // Return a transmission to give feedback
+    return ['#order-status': 'Order processed!']
+}
+%>
+
+<form on-submit=${ _{ t -> processOrder(t) }} target="self">
+    <input name="quantity" value="5" data-price="19.99">
+    <input type="checkbox" name="priorityShipping" checked>
+    <button type="submit">Submit</button>
+    <div id="order-status"></div>
+</form>
+```
 
 -----
 
@@ -325,7 +373,8 @@ This example uses an Array Transmission to perform a single, parameter-less acti
 This example shows a form that, upon submission, sends all its input values to the server. The Groovy closure accesses this data via the `t` object, performs a database operation, and then returns a transmission to reload the page.
 
 ```groovy
-<% // Define the server-side logic in a closure
+<%
+   // Define the server-side logic in a closure
    def editGuestbook = { t ->
        // Access form inputs from the 't' object
        gb.info.name = t.name.clean()
