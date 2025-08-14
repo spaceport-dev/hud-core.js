@@ -1,6 +1,6 @@
 > [!IMPORTANT]
 > 
-> This document covers Transmissions, a feature provided by Spaceport's Launchpad Templating system, and handled client-side by HUD-Core. HUD-Core also provides other functionality, so this handbook is not an exhaustive guide to using HUD-Core, but more specifically on using Transmissions. Additionally, this document should be considered a DRAFT, and some functionality may be missing or incorrect.
+> This document covers Transmissions, a feature provided by Spaceport's Launchpad Templating system–handled client-side by HUD-Core. HUD-Core also provides other functionality aside from transmissions, so this handbook is not an exhaustive guide to using HUD-Core, but more specifically on using Transmissions with Launchpad, and a few patterns around the Transmission concept.
 
 # The Launchpad Transmission Handbook
 
@@ -13,6 +13,14 @@ There are three primary formats for a transmission, each suited for different us
   * **🗺️ Map Transmission:** The most powerful and flexible format, for performing multiple, complex operations.
   * **⛓️ Array Transmission:** A concise format for chaining a sequence of simple actions or class changes.
   * **📦 Single Value Transmission:** The simplest format, for directly updating an element's content.
+
+## **Some Important Context**
+
+You may find yourself here without an idea of what Launchpad and Spaceport are. Spaceport is a full-stack web application framework that uses Groovy in combination with other standard web technologies. Find more information in the Spaceport Manual [https://spaceport.com.co/docs/](https://spaceport.com.co/docs/)
+
+Ready to hop right in? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers, or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. 
+
+This guide will serve as an onboarding for Launchpad Transmissions, but will also be useful as a handbook as reference for Launchpad syntax.
 
 ## **Rationales and a Core Examples**
 
