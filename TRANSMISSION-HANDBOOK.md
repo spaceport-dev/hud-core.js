@@ -14,6 +14,69 @@ There are three primary formats for a transmission, each suited for different us
   * **⛓️ Array Transmission:** A concise format for chaining a sequence of simple actions or class changes.
   * **📦 Single Value Transmission:** The simplest format, for directly updating an element's content.
 
+## **Rationales and a Core Examples**
+
+**One Rationale:** Why use Transmissions? To eliminate the need for custom JavaScript for common UI interactions. Instead of writing frontend code to handle what happens after a button click, you can define that behavior directly on the server, right next to your business logic. This keeps your templates cleaner and your development faster.
+
+**Core Example:** Here is a simple button that updates itself after being clicked.
+
+```html
+<button target="self" on-click=${ _{ ['innerText': 'Confirmed!', '+confirmed': 'it'] } }>
+    Confirm
+</button>
+```
+
+**What's Happening?**
+
+1.  **`on-click`**: The user clicks the button, triggering a server action.
+2.  **Server Logic**: The Groovy code `_{ ... }` runs on the server. It doesn't need to perform any complex logic; it just returns a Map Transmission.
+3.  **Transmission**: The map `['innerText': 'Confirmed!', '+confirmed': 'it']` is sent back to the browser.
+4.  **UI Update**: Launchpad receives the map and follows its instructions:
+      * `'innerText': 'Confirmed!'` tells it to change the button's text.
+      * `'+confirmed': 'it'` tells it to add the CSS class `confirmed` to the button itself (`it`).
+Of course. Here is the markdown for that section.
+
+### **Why Use Server State? The Single Source of Truth**
+
+While Launchpad provides tools for managing state on the client (like `documentData` for optimistic updates), the core strength of the Transmission pattern lies in its ability to rely on **server state**.
+
+**Why is this important?**
+
+  * **Reliability:** The server becomes the "single source of truth." The state of your application isn't just a temporary condition in the user's browser; it's a persistent fact stored on your server (e.g., in a database or session).
+  * **Consistency:** The user gets the same experience whether they refresh the page, close their browser and come back, or log in from a different device.
+  * **Security:** Sensitive calculations and business logic remain on the server, preventing client-side manipulation.
+
+**Example: A Persistent Counter**
+
+This simple counter's value is stored in the user's session on the server. Every click updates the true state, and the server simply tells the client what the new value is.
+
+```groovy
+<%
+    // Define a local variable, bound to the session by Launchpad when used in conjunction with HUD-Core.
+    def counter = 0;
+
+    // Closure to increment the counter
+    def increment = {
+        counter++
+        return counter + ' hot cross buns' // Return the new value directly
+    }
+
+    // Closure to decrement the counter
+    def decrement = {
+        counter--
+        return counter + ' hot cross buns' // Ultimately returned by the transmission
+    }
+%>
+
+<div class="counter-widget">
+    <button on-click=${ _{ decrement() } } target="#count-display">-</button>
+    <span id="count-display">${ counter } hot cross buns</span>
+    <button on-click=${ _{ increment() } } target="#count-display">+</button>
+</div>
+```
+
+In this example, clicking "+" or "-" runs the corresponding Groovy closure on the server. The closure modifies `counter`, a local variable to the session, and then returns the new integer value. This **Single Value Transmission** is received by the client, and Launchpad updates the `innerHTML` of the `<span id="count-display">` to show the new, authoritative count from the server.
+
 -----
 
 ## **Available `on-*` Events**
