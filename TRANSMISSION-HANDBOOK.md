@@ -16,9 +16,9 @@ There are three primary formats for a transmission, each suited for different us
 
 ## **Some Important Context**
 
-You may find yourself here without an idea of what Launchpad and Spaceport are. Spaceport is a full-stack web application framework that uses Groovy in combination with other standard web technologies. Find more information in the Spaceport Manual [https://spaceport.com.co/docs/](https://spaceport.com.co/docs/)
+You may find yourself here without an idea of what Launchpad and Spaceport are. Spaceport is a full-stack web application framework that uses Groovy in combination with other standard web technologies. Find more information in the Spaceport Manual [https://spaceport.com.co/docs/](https://spaceport.com.co/docs/).
 
-Ready to hop right in to the Spaceport ecosystem? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers, or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. 
+Ready to hop right in to the Spaceport ecosystem? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers–or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. 
 
 This guide for Transmissions will serve as an onboarding for Launchpad Transmissions, but will also be useful as a handbook as reference for Launchpad Transmission syntax as you build your application.
 
