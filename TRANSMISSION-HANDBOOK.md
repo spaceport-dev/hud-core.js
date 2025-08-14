@@ -44,7 +44,6 @@ Why use Transmissions? To eliminate the need for custom JavaScript for common UI
 4.  **UI Update**: Launchpad receives the map and follows its instructions:
       * `'innerText': 'Confirmed!'` tells it to change the button's text.
       * `'+confirmed': 'it'` tells it to add the CSS class `confirmed` to the button itself (`it`).
-Of course. Here is the markdown for that section.
 
 **Another Rationale: Server State–The Single Source of Truth**
 
@@ -137,8 +136,6 @@ When a Launchpad event is triggered, a rich payload of contextual data is automa
 | **Custom Data** | `[data-attribute]` | All `data-*` attributes on the element are sent as top-level properties in the `t` object (e.g., `data-user-id="123"` becomes `t.userId`). |
 | **URL Data** | `[query-param]` | All query parameters from the current page's URL are included as top-level properties. |
 | **Included Data** | `[storage-key]` | You can use the `include` attribute on an element to explicitly send specific `localStorage` (`*key`) or `sessionStorage` (`~key`) values. You can also include standard element attributes by name (e.g., `include="id, *theme"`). |
-
-Of course. Here is the Markdown for that section.
 
 ### **Working with the `t` Object on the Server**
 
