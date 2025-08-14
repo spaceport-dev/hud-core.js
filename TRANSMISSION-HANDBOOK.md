@@ -16,7 +16,9 @@ There are three primary formats for a transmission, each suited for different us
 
 ## **Rationales and a Core Examples**
 
-**One Rationale:** Why use Transmissions? To eliminate the need for custom JavaScript for common UI interactions. Instead of writing frontend code to handle what happens after a button click, you can define that behavior directly on the server, right next to your business logic. This keeps your templates cleaner and your development faster.
+**One Rationale:** 
+
+Why use Transmissions? To eliminate the need for custom JavaScript for common UI interactions. Instead of writing frontend code to handle what happens after a button click, you can define that behavior directly on the server, right next to your business logic. This keeps your templates cleaner and your development faster.
 
 **Core Example:** Here is a simple button that updates itself after being clicked.
 
@@ -36,9 +38,9 @@ There are three primary formats for a transmission, each suited for different us
       * `'+confirmed': 'it'` tells it to add the CSS class `confirmed` to the button itself (`it`).
 Of course. Here is the markdown for that section.
 
-### **Why Use Server State? The Single Source of Truth**
+**Another Rationale: Server State–The Single Source of Truth**
 
-While Launchpad provides tools for managing state on the client (like `documentData` for optimistic updates), the core strength of the Transmission pattern lies in its ability to rely on **server state**.
+While Launchpad provides tools for managing state on the client (like `documentData` for optimistic updates), one of the core strengths of the Transmission pattern lies in its ability to rely on **server state**.
 
 **Why is this important?**
 
@@ -52,7 +54,8 @@ This simple counter's value is stored in the user's session on the server. Every
 
 ```groovy
 <%
-    // Define a local variable, bound to the session by Launchpad when used in conjunction with HUD-Core.
+    // Define a local variable, bound to the session by Launchpad when used in
+    // conjunction with HUD-Core, or any other variable in any scope necessary.
     def counter = 0;
 
     // Closure to increment the counter
@@ -69,9 +72,9 @@ This simple counter's value is stored in the user's session on the server. Every
 %>
 
 <div class="counter-widget">
-    <button on-click=${ _{ decrement() } } target="#count-display">-</button>
+    <button on-click=${ _{ decrement() }} target="#count-display">-</button>
     <span id="count-display">${ counter } hot cross buns</span>
-    <button on-click=${ _{ increment() } } target="#count-display">+</button>
+    <button on-click=${ _{ increment() }} target="#count-display">+</button>
 </div>
 ```
 
