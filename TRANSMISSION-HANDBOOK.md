@@ -18,9 +18,9 @@ There are three primary formats for a transmission, each suited for different us
 
 You may find yourself here without an idea of what Launchpad and Spaceport are. Spaceport is a full-stack web application framework that uses Groovy in combination with other standard web technologies. Find more information in the Spaceport Manual [https://spaceport.com.co/docs/](https://spaceport.com.co/docs/)
 
-Ready to hop right in? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers, or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. 
+Ready to hop right in to the Spaceport ecosystem? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers, or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. 
 
-This guide will serve as an onboarding for Launchpad Transmissions, but will also be useful as a handbook as reference for Launchpad syntax.
+This guide for Transmissions will serve as an onboarding for Launchpad Transmissions, but will also be useful as a handbook as reference for Launchpad Transmission syntax as you build your application.
 
 ## **Rationales and a Core Examples**
 
@@ -93,6 +93,9 @@ In this example, clicking "+" or "-" runs the corresponding Groovy closure on th
 ## **Available `on-*` Events**
 
 Launchpad listens for a wide range of standard browser DOM events. You can attach a server action to any of these events by creating an attribute with an `on-` prefix (e.g., `on-click`, `on-submit`). When the event occurs on that element, it will trigger a call to the server and process the returned transmission.
+
+> [!NOTE]
+> Notice that the syntax for a Launchpad Server Event differs from a standard client-side inline event with a dash (-) in its attribute name. This allows for leverage of both server-side and client-side inline events when necessary.
 
 #### **Mouse Events**
 
@@ -314,6 +317,9 @@ This example uses an Array Transmission to perform a single, parameter-less acti
 </button>
 ```
 
+> [!NOTE]
+> Notice that the transmission is alone inside the server action. By default, Groovy returns the last value, so a return keyword is optional when sending the transmission back to the client.
+
 ### **Example 2: Form Submission and Data Handling**
 
 This example shows a form that, upon submission, sends all its input values to the server. The Groovy closure accesses this data via the `t` object, performs a database operation, and then returns a transmission to reload the page.
@@ -337,6 +343,9 @@ This example shows a form that, upon submission, sends all its input values to t
     <button type='submit'>Update</button>
 </form>
 ```
+
+> [!NOTE]
+> The `t` parameter is optional if you don't require any client-side context aside from the firing of the event itself. Including the parameter, however, unlocks all of the contextual data that HUD-Core will send for your server-side logic to assess.
 
 ### **Example 3: Inline Action with Contextual Data**
 
