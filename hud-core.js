@@ -1,4 +1,4 @@
-// HUD-CORE v1.1.1
+// HUD-CORE v1.1.2
 
 // This file enabled web-HUD features for Launchpad, the reative
 // templating engine for Spaceport. Include this file in your
@@ -301,12 +301,12 @@ const builtInEvents = [
     'on-focusout',
     'on-focusin',
     'on-blur',
-    // 'on-drag',
-    // 'on-dragend',
+    'on-drag',
+    'on-dragend',
     'on-dragenter',
     'on-dragleave',
-    // 'on-dragover',
-    // 'on-dragstart',
+    'on-dragover',
+    'on-dragstart',
     'on-drop',
     // 'on-scroll',
     'on-wheel',
@@ -321,7 +321,8 @@ const builtInEvents = [
     'on-select',
     'on-contextmenu',
     'on-beforeunload',
-    'on-formblur'
+    'on-formblur',
+    'on-nudge'
 ]
 
 
@@ -512,6 +513,7 @@ async function fetchDataAndUpdate(event, url) {
         && event.target.getAttribute('source') !== 'auto'
         && event.currentTarget.getAttribute('source') !== 'auto') {
         let checkElement = event.target
+
         while (checkElement) {
             if (checkElement.matches(event.currentTarget.getAttribute('source'))) {
                 activeTarget = checkElement
@@ -531,11 +533,14 @@ async function fetchDataAndUpdate(event, url) {
                 }
             }
         }
+
         if (checkElement === null) console.log('No source match. Checking IDs.')
-        // Or, just a straight up ID
+
+        // Or, just a straight up ID, page scope
         if ( checkElement === null && event.currentTarget.getAttribute('source').startsWith('#')) {
             activeTarget = document.querySelector(event.currentTarget.getAttribute('source'))
         }
+
         if (checkElement === null && activeTarget == null) {
             console.log('No source match.')
             return
@@ -992,7 +997,8 @@ async function fetchDataAndUpdate(event, url) {
                     url.searchParams.set(queryString, payload[key])
                     // update the location
                     window.history.pushState({}, '', url)
-                } else if (key.startsWith('#')) {
+                } else if (key.startsWith('*')) {
+                    // * is a data-* attribute, useful since data attributes are sent back as data in a transmission
                     payloadTarget.dataset[key.substring(1)] = payload[key]
                 } else if(key.startsWith('&')) {
                     // If the key starts with '&', then it is a style
@@ -1171,9 +1177,7 @@ async function fetchDataAndUpdate(event, url) {
                                 payloadTarget.removeAttribute('x-display')
                             }
                         }
-
                     } else if (key === '@hide') {
-
                         if (payload[key] === 'this') {
                             // if has a hide() method, then call it
                             if (event.target.hide) {
@@ -1206,7 +1210,6 @@ async function fetchDataAndUpdate(event, url) {
                                 payloadTarget.style.display = 'none'
                             }
                         }
-
                     } else if (key === '@open') {
                         if (payload[key] === 'this') {
                             if (event.target.tagName === 'DETAILS') {
@@ -1247,7 +1250,6 @@ async function fetchDataAndUpdate(event, url) {
                                 }
                             }
                         }
-
                     } else if (key === '@close') {
                         if (payload[key] === 'this') {
                             if (event.target.tagName === 'DETAILS') {
@@ -1348,13 +1350,24 @@ async function fetchDataAndUpdate(event, url) {
                         console.log(payload[key])
                     } else if (key === '@table') {
                         console.table(payload[key])
+                    } else if (key === '@nudge') {
+                        // Dispatches a custom 'nudge' event, also server-side enabled
+                        if (payload[key] == 'this') {
+                            event.target.dispatchEvent(new CustomEvent('nudge', { bubbles: true }))
+                        } else if (payload[key] == 'it') {
+                            event.currentTarget.dispatchEvent(new CustomEvent('nudge', { bubbles: true }))
+                        } else if (payload[key] == 'source') {
+                            activeTarget.dispatchEvent(new CustomEvent('nudge', { bubbles: true }) )
+                        } else {
+                            payloadTarget.dispatchEvent(new CustomEvent('nudge', { bubbles: true }) )
+                        }
                     }
-                } else if (key.startsWith('*')) {
+                } else if (key.startsWith('~~')) {
+                    // If the key starts with '~', then it is sessionstorage
+                    sessionStorage.setItem(key.substring(2), payload[key])
+                } else if (key.startsWith('~')) {
                     // If the key starts with '*', then it is localstorage
                     localStorage.setItem(key.substring(1), payload[key])
-                } else if (key.startsWith('~')) {
-                    // If the key starts with '~', then it is sessionstorage
-                    sessionStorage.setItem(key.substring(1), payload[key])
                 } else if (key.startsWith('+')) {
                     // If the key starts with '+', then it is a class
                     if (payload[key] === 'this') {
@@ -1387,11 +1400,9 @@ async function fetchDataAndUpdate(event, url) {
                     }
                 }
             }
-
         }
 
     } else {
-
         if (payloadTarget == null) return
 
         if (payloadTarget.getAttribute('target') === 'outer') {
@@ -1838,3 +1849,6 @@ window.addEventListener('focusout', (event) => {
         }
     }, 0)
 })
+
+
+
