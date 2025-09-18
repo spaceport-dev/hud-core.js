@@ -118,7 +118,7 @@ Launchpad listens for a wide range of standard browser DOM events. You can attac
 
 #### **Lifecycle Events**
 
-  * `on-load`, `on-beforeunload`
+  * `on-load`, `on-beforeunload`, `on-nudge`
 
 -----
 
@@ -245,7 +245,7 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | Prefix / Key | Description | Example (Groovy) |
 | :--- | :--- | :--- |
 | **(none)** | Sets a standard HTML attribute on the target element. | `['disabled': true, 'title': 'Processing...']` |
-| **`#`** | Sets a `data-*` attribute. The `#` is replaced with `data-`. | `['#userId': 123, '#role': 'admin']` |
+| **`*`** | Sets a `data-*` attribute. The `*` in the key is replaced with `data-`. | `['*user-id': 123, '*role': 'admin']` |
 | **`value`** | Sets the `.value` property of the target (e.g., for `<input>`). | `['value': 'Initial text']` |
 | **`innerHTML`** | Replaces the entire inner HTML content of the target. | `['innerHTML': '<strong>Update Complete!</strong>']` |
 | **`outerHTML`** | Replaces the entire target element with the provided HTML string. | `['outerHTML': '<div class="alert">Done.</div>']` |
@@ -278,6 +278,7 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | **`@remove`** | Removes an element from the DOM. | `null`, `'this'`, `'it'`, `'source'` | `['@remove': '.item-to-delete']` |
 | **`@clear`** | Clears an element's `value` or `innerHTML`. | `null`, `'this'`, `'it'`, `'source'` | `['@clear': '#search-input']` |
 | **`@download`** | Triggers a file download. | `String (URL)` | `['@download': '/path/to/report.pdf']` |
+| **`@nudge`** | Triggers a nudge event. | `null`, `'this'`, `'it'`, `'source'` | `['@nudge': 'it']` |
 
 #### Action Targets: `this`, `it`, and `source`
 When you specify an action in a Map Transmission, you can control which element the action applies to.
@@ -292,8 +293,8 @@ When you specify an action in a Map Transmission, you can control which element 
 | Prefix / Key | Description | Value Type(s) | Example (Groovy) |
 | :--- | :--- | :--- | :--- |
 | **`?`** | Sets a URL query parameter without reloading the page. | `String` | `['?page': 2, '?sort': 'asc']` |
-| **`*`** | Sets a key-value pair in the browser's `localStorage`. | `String` | `['*theme': 'dark']` |
-| **`~`** | Sets a key-value pair in the browser's `sessionStorage`. | `String` | `['~sessionToken': 'xyz123']` |
+| **`~`** | Sets a key-value pair in the browser's `localStorage`. | `String` | `['*theme': 'dark']` |
+| **`~~`** | Sets a key-value pair in the browser's `sessionStorage`. | `String` | `['~sessionToken': 'xyz123']` |
 | **`@redirect`** | Navigates the browser to a new URL. | `String (URL)` | `['@redirect': '/dashboard']` |
 | **`@reload`** | Reloads the current page. | `null` | `['@reload': null]` |
 | **`@back`, `@forward`** | Navigates back or forward in the browser's history. | `null` | `['@back': null]` |
