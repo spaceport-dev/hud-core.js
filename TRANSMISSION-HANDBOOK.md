@@ -304,6 +304,7 @@ When you specify an action in a Map Transmission, you can control which element 
 In addition to using a target attribute, Map Transmissions support selector-style keys for direct DOM updates. These selector entries always perform an innerHTML replacement on the matched element(s).
 
 | Key Format |	Behavior |	Example |
+| :--- | :--- | :--- |
 | #id | Updates the element with a specific ID.	| ['#status': 'Saved!'] |
 | > selector	| Finds a descendant of the payload target.	| ['> .details': '<p>Updated details</p>'] |
 | < selector |	Finds the closest ancestor of the payload target.	| ['< section': '<h2>Section Removed</h2>'] |
