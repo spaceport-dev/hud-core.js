@@ -367,7 +367,7 @@ function getTargetElement(event) {
     if (target == null) return null
 
     // Some targets involve adding a new element to the DOM, so this provides a way to define a wrapper. Default: <DIV>
-    const tagType = element.hasAttribute('element-type') ? element.getAttribute('element-type') : 'div'
+    const tagType = element.hasAttribute('wrapper') ? element.getAttribute('wrapper') : 'div'
 
     // Now get the target element based on the target string
     switch (target) {
@@ -380,6 +380,10 @@ function getTargetElement(event) {
             return element.nextElementSibling
         case 'previous':
             return element.previousElementSibling
+        case 'nextnext':
+            return element.nextElementSibling.nextElementSibling
+        case 'previousprevious':
+            return element.previousElementSibling.previousElementSibling
 
         case 'first':
             return element.firstElementChild
@@ -400,48 +404,24 @@ function getTargetElement(event) {
             return element.firstElementChild
 
         case 'nth-sibling':
-            const index = parseInt(element.getAttribute('sibling-index'), 10)
+            const index = parseInt(element.getAttribute('index'), 10)
             return element.parentNode?.children[index] || null
         case 'nth-child':
-            const childIndex = parseInt(element.getAttribute('child-index'), 10)
+            const childIndex = parseInt(element.getAttribute('index'), 10)
             return element.children[childIndex] || null
         case 'nth-parent':
-            const parentIndex = parseInt(element.getAttribute('parent-index'), 10)
+            const parentIndex = parseInt(element.getAttribute('index'), 10)
             return element.parentElement?.parentElement?.children[parentIndex] || null
-
-        case 'ancestor-tag':
-            const tagName = element.getAttribute('ancestor-tag')
-            let parent = element.parentElement
-            while (parent) {
-                if (parent.tagName.toLowerCase() === tagName.toLowerCase()) {
-                    return parent
-                }
-                parent = parent.parentElement
-            }
-            return null
-        case 'ancestor-class':
-            const className = element.getAttribute('ancestor-class')
-            let parent2 = element.parentElement
-            while (parent2) {
-                if (parent2.classList.contains(className)) {
-                    return parent2
-                }
-                parent2 = parent2.parentElement
-            }
-            return null
-        case 'descendant-tag':
-            const descendantTagName = element.getAttribute('descendant-tag')
-            return element.querySelector(descendantTagName)
-
-        case 'descendant-class':
-            const descendantClassName = element.getAttribute('descendant-class')
-            return element.querySelector('.' + descendantClassName)
 
         default:
             if (target.startsWith('>')) {
                 return element.querySelector(target.substring(1))
             }
-
+            // Also allow searching ancestors using closest
+            if (target.startsWith('<')) {
+                return element.closest(target.substring(1))
+            }
+            // Anything else is a document querySelector
             return document.querySelector(target) || null
     }
 }
@@ -820,12 +800,12 @@ async function fetchDataAndUpdate(event, url) {
                     if (attr.name === 'on-' + event.type.toLowerCase()) continue
                     postData[attr.name] = attr.value
                 }
-            } else if (key.startsWith('*')) {
-                // If the key starts with '*', then it is localstorage
-                postData[key.substring(1)] = localStorage.getItem(key.substring(1))
+            } else if (key.startsWith('~~')) {
+                // If the key starts with '~~', then it is localstorage
+                postData[key.substring(2)] = sessionStorage.getItem(key.substring(2))
             } else if (key.startsWith('~')) {
                 // If the key starts with '~', then it is sessionstorage
-                postData[key.substring(1)] = sessionStorage.getItem(key.substring(1))
+                postData[key.substring(1)] = localStorage.getItem(key.substring(1))
             } else {
                 // Otherwise, guess -- but probably an attribute
                 postData[key] = activeTarget.getAttribute(key) || localStorage.getItem(key) || sessionStorage.getItem(key)
@@ -1391,6 +1371,13 @@ async function fetchDataAndUpdate(event, url) {
                     } else {
                         payloadTarget.classList.remove(key.substring(1))
                     }
+                } else if (key.startsWith('#')) {
+                    // If the key starts with '#', we're doing an innerHTML replacement
+                    // on the element that matches the id
+                    document.getElementById(key.substring(1)).innerHTML = payload[key]
+                } else if (key.startsWith('>')) {
+                    // If the key starts with '>', it's a querySelector on the activeTarget
+                    activeTarget.querySelector(key.substring(1)).innerHTML = payload[key]
                 } else {
                     if (payloadTarget) {
                         // Otherwise, it is an attribute
@@ -1405,7 +1392,7 @@ async function fetchDataAndUpdate(event, url) {
     } else {
         if (payloadTarget == null) return
 
-        if (payloadTarget.getAttribute('target') === 'outer') {
+        if (activeTarget.getAttribute('target') === 'outer') {
             // Replace the entire payloadTarget with new html
             payloadTarget.outerHTML = text
         } else {
