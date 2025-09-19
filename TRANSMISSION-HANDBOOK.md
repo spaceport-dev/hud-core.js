@@ -118,7 +118,7 @@ Launchpad listens for a wide range of standard browser DOM events. You can attac
 
 #### **Lifecycle Events**
 
-  * `on-load`, `on-beforeunload`, `on-nudge`
+  * `on-load`, `on-beforeunload`, `on-nudge` (custom)
 
 -----
 
@@ -170,12 +170,13 @@ def processOrder = { t ->
         // ... process order with correct data types
     }
 
-    // Return a transmission to give feedback
-    return ['#order-status': 'Order processed!']
+    // Return a transmission to give updates and feedback using a direct hypertext replacement
+    // along with a targeted transmission
+    return [ '#order-status' : 'Order processed!', 'disabled' : 'true' ]
 }
 %>
 
-<form on-submit=${ _{ t -> processOrder(t) }} target="self">
+<form on-submit=${ _{ t -> processOrder(t) }} target='button'>
     <input name="quantity" value="5" data-price="19.99">
     <input type="checkbox" name="priorityShipping" checked>
     <button type="submit">Submit</button>
@@ -194,7 +195,7 @@ Imagine you have a list where each item should be clickable. Instead of putting 
 | `source` Value | Behavior | Use Case |
 | :--- | :--- | :--- |
 | **(not set)** | By default, the data comes from the `event.target` (the actual element clicked). | Simple cases where the clickable element is the one with the `on-*` listener. |
-| **CSS Selector** | The `on-*` listener is on a container, but the data payload is gathered from the child element that matches the selector. | A `ul` with `on-click` and `source="li"`. When you click an `li`, the server receives the `value`, `data-*` attributes, etc., of that specific `li`. |
+| **CSS Selector** | The `on-*` listener is on a container, but the data payload is gathered from the element that matches the selector from the source element. | A `ul` with `on-click` and `source="li"`. When you click an `li`, the server receives the `value`, `data-*` attributes, etc., of that specific `li`. |
 | **`strict`** | The event will only fire if the element clicked (`event.target`) is the exact same element that has the `on-*` listener (`event.currentTarget`). Clicks on child elements are ignored. | Preventing actions from firing when a user clicks on an icon or `<strong>` tag inside a button. |
 | **`auto`** | Explicitly sets the default behavior where the `event.target` is the source of the data. | Can be used to clarify intent, but is rarely needed as it's the default behavior. |
 
@@ -213,17 +214,15 @@ When an event fires, Launchpad looks for the `target` attribute by first checkin
 | **`parent`** | Targets the immediate parent element. | (none) | `<div> <button target="parent" on-click=${...}>Update Div</button> </div>` |
 | **`grandparent`** | Targets the parent of the parent element. | (none) | `<body> <div> <button target="grandparent" on-click=${...}>Update Body</button> </div> </body>` |
 | **`next`** / **`previous`** | Targets the next or previous sibling element at the same level. | (none) | `<div id="a"></div> <button target="previous" on-click=${...}></button>` |
+| **`nextnext`** / **`previousprevious`** | Targets the next or previous sibling element's next or previous sibling element at the same level. | (none) | `<div id="a"></div> <img> <button target="previousprevious" on-click=${...}></button>` |
 | **`first`** / **`last`** | Targets the first or last child element inside the current element. | (none) | `<div on-click=${...} target="first"> <p>Target Me</p> <p>Not Me</p> </div>` |
-| **`append`** / **`prepend`** | **Inserts a new element** as the last/first child of the current element and targets it. | `element-type` (optional, defaults to `div`) | `<ul on-click=${...} target="append" element-type="li">Add Item</ul>` |
-| **`after`** / **`before`** | **Inserts a new element** after/before the current element and targets it. | `element-type` (optional, defaults to `div`) | `<div on-click=${...} target="after">Insert New Div After</div>` |
-| **`nth-child`** | Targets a child of the current element by its index (0-based). | `child-index="n"` | `<div on-click=${...} target="nth-child" child-index="1"> <p>0</p> <p>Target Me</p> </div>` |
-| **`nth-sibling`** | Targets a sibling of the current element by its index (0-based). | `sibling-index="n"` | `<p>0</p> <button on-click=${...} target="nth-sibling" sibling-index="0"></button>` |
-| **`ancestor-tag`** | Finds the closest ancestor element with the specified tag name. | `ancestor-tag="tagname"` | `<form> <button on-click=${...} target="ancestor-tag" ancestor-tag="form">Update Form</button> </form>` |
-| **`ancestor-class`**| Finds the closest ancestor element with the specified CSS class. | `ancestor-class="name"` | `<div class="card"> <button on-click=${...} target="ancestor-class" ancestor-class="card">Update Card</button> </div>`|
-| **`descendant-tag`**| Finds the first descendant element with the specified tag name. | `descendant-tag="tagname"` | `<div on-click=${...} target="descendant-tag" descendant-tag="span"> <p> <span>Target Me</span> </p> </div>` |
-| **`descendant-class`**| Finds the first descendant element with the specified CSS class. | `descendant-class="name"` | `<div on-click=${...} target="descendant-class" descendant-class="item"> <p class="item">Target Me</p> </div>` |
+| **`append`** / **`prepend`** | **Inserts a new element** as the last/first child of the current element and targets it. | `wrapper` (optional, defaults to `div`) | `<ul on-click=${...} target="append" wrapper="li">Add Item</ul>` |
+| **`after`** / **`before`** | **Inserts a new element** after/before the current element and targets it. | `wrapper` (optional, defaults to `div`) | `<div on-click=${...} target="after">Insert New Div After</div>` |
+| **`nth-child`** | Targets a child of the current element by its index (0-based). | `index="n"` | `<div on-click=${...} target="nth-child" index="1"> <p>0</p> <p>Target Me</p> </div>` |
+| **`nth-sibling`** | Targets a sibling of the current element by its index (0-based). | `index="n"` | `<p>0</p> <button on-click=${...} target="nth-sibling" index="0"></button>` |
 | `> selector` | Uses a CSS selector to find a descendant within the current element. | (none) | `<div on-click=${...} target="> .item-details"> <p class="item-details"></p> </div>` |
-| `selector` | Any other string is treated as a global CSS selector for the entire document. Ideal for IDs. | (none) | `<button on-click=${...} target="#main-content">Update Main</button>` |
+| `< selector` | Uses a CSS selector to find an ancestor of the current element. | (none) | `<section> ... <div on-click=${...} target="< section"> <p class="item-details"></p> </div> ... </section>` |
+| `selector` | Any other string is treated as a global CSS selector for the entire document. Ideal for IDs, or advanced selectors. | (none) | `<button on-click=${...} target="#main-content">Update Main</button>` |
 
 #### **The Special Case: `target="outer"`**
 
@@ -293,14 +292,46 @@ When you specify an action in a Map Transmission, you can control which element 
 | Prefix / Key | Description | Value Type(s) | Example (Groovy) |
 | :--- | :--- | :--- | :--- |
 | **`?`** | Sets a URL query parameter without reloading the page. | `String` | `['?page': 2, '?sort': 'asc']` |
-| **`~`** | Sets a key-value pair in the browser's `localStorage`. | `String` | `['*theme': 'dark']` |
-| **`~~`** | Sets a key-value pair in the browser's `sessionStorage`. | `String` | `['~sessionToken': 'xyz123']` |
+| **`~`** | Sets a key-value pair in the browser's `localStorage`. | `String` | `['~theme': 'dark']` |
+| **`~~`** | Sets a key-value pair in the browser's `sessionStorage`. | `String` | `['~~sessionToken': 'xyz123']` |
 | **`@redirect`** | Navigates the browser to a new URL. | `String (URL)` | `['@redirect': '/dashboard']` |
 | **`@reload`** | Reloads the current page. | `null` | `['@reload': null]` |
 | **`@back`, `@forward`** | Navigates back or forward in the browser's history. | `null` | `['@back': null]` |
 | **`@print`** | Opens the browser's print dialog. | `null` | `['@print': null]` |
 
------
+#### **Selector-Based Map Entries**
+
+In addition to using a target attribute, Map Transmissions support selector-style keys for direct DOM updates. These selector entries always perform an innerHTML replacement on the matched element(s).
+
+| Key Format |	Behavior |	Example |
+| #id | Updates the element with a specific ID.	| ['#status': 'Saved!'] |
+| > selector	| Finds a descendant of the payload target.	| ['> .details': '<p>Updated details</p>'] |
+| < selector |	Finds the closest ancestor of the payload target.	| ['< section': '<h2>Section Removed</h2>'] |
+| Any other selector |	Treated as a global querySelector against the document.	| ['.notification': '<div>New Notice</div>'] |
+
+These entries do not require a target attribute. The key itself determines where the content is applied. If you do specify a target on the element, both the target and the selector entries can be combined in the same transmission.
+
+**Working Together: Targets + Selectors**
+
+One of the most powerful patterns is combining targeted updates with selector-based replacements.
+
+For example, you can:
+* Use a target to update the element the action is bound to (change attributes, toggle classes, disable a button, etc.).
+* At the same time, use a #id or > selector entry to update a different region of the DOM with fresh HTML.
+
+**Example:**
+
+```groovy
+// Returning from a on-click bound to a button.
+return [
+    'disabled': true,          // disables the button (targeted element)
+    '+loading': 'it',          // adds a 'loading' class to the button
+    '#order-status': 'Saving…' // updates the status display by selector
+]
+```
+
+Here, the target ensures the button reflects its new state, while the selector-based entry updates a completely separate element. This dual mechanism allows a single server action to coordinate stateful changes (attributes, classes) and content updates (innerHTML replacement) across the DOM.
+
 
 ### ⛓️ The Array Transmission (`[...]`)
 
