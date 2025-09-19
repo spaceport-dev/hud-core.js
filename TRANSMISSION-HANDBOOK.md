@@ -305,10 +305,10 @@ In addition to using a target attribute, Map Transmissions support selector-styl
 
 | Key Format |	Behavior |	Example |
 | :--- | :--- | :--- |
-| #id | Updates the element with a specific ID.	| ['#status': 'Saved!'] |
-| > selector	| Finds a descendant of the payload target.	| ['> .details': '<p>Updated details</p>'] |
-| < selector |	Finds the closest ancestor of the payload target.	| ['< section': '<h2>Section Removed</h2>'] |
-| Any other selector |	Treated as a global querySelector against the document.	| ['.notification': '<div>New Notice</div>'] |
+| `#id` | Updates the element with a specific ID.	| `['#status': 'Saved!']` |
+| `> selector`	| Finds a descendant of the source element.	| `['> .details': '<p>Updated details</p>']` |
+| `< selector` |	Finds the closest ancestor of the source element.	| `['< section': '<h2>Section Removed</h2>']` |
+| `Any other selector` |	Treated as a global querySelector against the document.	| `['.notification': '<div>New Notice</div>']` |
 
 These entries do not require a target attribute. The key itself determines where the content is applied. If you do specify a target on the element, both the target and the selector entries can be combined in the same transmission.
 
