@@ -171,6 +171,38 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Node type 1 is an element
                     if (node.nodeType === Node.ELEMENT_NODE) {
 
+                        // Clean up Launchpad Server Elements
+                        function findAndDeconstruct(el) {
+                            // Check the element itself for the 'deconstructed' function
+                            const elementId = el.getAttribute('element-id');
+                            if (elementId && el.hasOwnProperty('deconstructed')) {
+                                try {
+                                    // 1. Execute the developer's client-side cleanup function
+                                    // The 'element' variable is available as 'el' in this context.
+                                    el.deconstructed(el);
+                                } catch (e) {
+                                    console.error("Launchpad Cleanup Error: Failed to run deconstructed on element:", elementId, e);
+                                }
+                            }
+                            
+                            // 2. Recursively check all descendants for Launchpad Elements
+                            if (el.querySelectorAll) {
+                                el.querySelectorAll('[element-id]').forEach(function(child) {
+                                    const childId = child.getAttribute('element-id');
+                                    if (childId && child.hasOwnProperty('deconstructed')) {
+                                         try {
+                                             child.deconstructed(child);
+                                         } catch (e) {
+                                             console.error("Launchpad Cleanup Error: Failed to run deconstructed on child element:", childId, e);
+                                         }
+                                    }
+                                });
+                            }
+                        }
+
+                        // Run cleanup on the removed node, which handles itself and all its children.
+                        findAndDeconstruct(node);
+
                         // Removed
                         if (node.hasOwnProperty('removed')) {
                             try { node.removed(node) } catch (e) { console.error(e) }
@@ -221,15 +253,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (targetNode.hasOwnProperty('attributeChanged')) {
                     try {
                         targetNode.attributeChanged(targetNode, mutation.attributeName, mutation.oldValue, targetNode.getAttribute(mutation.attributeName));
-                    } catch (e) {
-                        console.error(e);
-                    }
-                }
-
-                // Call the attributeChanged function if it exists on the target node
-                if (targetNode.hasOwnProperty('attributechanged')) {
-                    try {
-                        targetNode.attributechanged(targetNode, mutation.attributeName, mutation.oldValue, targetNode.getAttribute(mutation.attributeName));
                     } catch (e) {
                         console.error(e);
                     }
