@@ -55,6 +55,36 @@ document.addEventListener('DOMContentLoaded', function() {
     // Scan DOM for 'comment' nodes and parse for document data
     scanForComments(document)
 
+    // Cleans up Server Elements, their window declaration, also listeners that were registered
+    // with .listen(), and run a user-defined deconstructed event (if necessary)
+    function cleanupLaunchpadElement(element) {
+        const elementId = element.getAttribute('element-id');
+        
+        // Look up the global component instance (e.g., window.element_456)
+        const componentInstance = window[`element_${elementId}`];
+    
+        if (componentInstance) {
+            if (componentInstance._listeners && Array.isArray(componentInstance._listeners)) {
+                componentInstance._listeners.forEach(listener => {
+                    // Use the stored references to remove the listeners
+                    element.removeEventListener(listener.type, listener.handler, listener.options);
+                });
+                // Clear the array to free up memory
+                componentInstance._listeners.length = 0;
+            }
+            if (componentInstance.deconstructed) {
+                try {
+                    // Developers use this for timers, window events, or other "crazy" tasks.
+                    componentInstance.deconstructed(componentInstance);
+                } catch (e) {
+                    console.error(`Error in deconstructed() hook for element ${elementId}:`, e);
+                }
+            }
+            delete window[`element_${elementId}`];
+        }
+    }
+
+    // Watch for mutations
     const observer = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) {
 
@@ -171,37 +201,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Node type 1 is an element
                     if (node.nodeType === Node.ELEMENT_NODE) {
 
-                        // Clean up Launchpad Server Elements
-                        function findAndDeconstruct(el) {
-                            // Check the element itself for the 'deconstructed' function
-                            const elementId = el.getAttribute('element-id');
-                            if (elementId && el.hasOwnProperty('deconstructed')) {
-                                try {
-                                    // 1. Execute the developer's client-side cleanup function
-                                    // The 'element' variable is available as 'el' in this context.
-                                    el.deconstructed(el);
-                                } catch (e) {
-                                    console.error("Launchpad Cleanup Error: Failed to run deconstructed on element:", elementId, e);
-                                }
-                            }
-                            
-                            // 2. Recursively check all descendants for Launchpad Elements
-                            if (el.querySelectorAll) {
-                                el.querySelectorAll('[element-id]').forEach(function(child) {
-                                    const childId = child.getAttribute('element-id');
-                                    if (childId && child.hasOwnProperty('deconstructed')) {
-                                         try {
-                                             child.deconstructed(child);
-                                         } catch (e) {
-                                             console.error("Launchpad Cleanup Error: Failed to run deconstructed on child element:", childId, e);
-                                         }
-                                    }
-                                });
-                            }
+                        // Check if the removed node itself is a Launchpad Element
+                        if (node.hasAttribute('element-id')) {
+                             cleanupLaunchpadElement(node);
                         }
-
-                        // Run cleanup on the removed node, which handles itself and all its children.
-                        findAndDeconstruct(node);
+                        
+                        // Check for any Launchpad Elements nested inside the removed node
+                        if (node.querySelectorAll) {
+                            node.querySelectorAll('[element-id]').forEach(function(childElement) {
+                                 cleanupLaunchpadElement(childElement);
+                            });
+                        }
 
                         // Removed
                         if (node.hasOwnProperty('removed')) {
@@ -276,7 +286,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
     })
-
 
     // Elements that have a HREF attribute will be automatically registered for click events
     // and will navigate the page to the specified URL.
