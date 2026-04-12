@@ -497,7 +497,8 @@ function applyAction(action, value, target, context) {
         case 'close':
             if (value === 'window') { window.close(); break }
             if (el.tagName === 'DETAILS') { el.removeAttribute('open') }
-            else { el.close() }
+            else if (el.tagName === 'DIALOG') { el.close() }
+            else { el.closest('dialog')?.close() }
             break
 
         case 'clear':
