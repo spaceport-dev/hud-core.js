@@ -418,6 +418,121 @@ function resolveTarget(targetString, element, wrapper = 'div') {
     }
 }
 
+// Resolves the this/it/source context selector to a DOM element.
+// Used by applyAction() to determine which element an action targets.
+//   'this'   -> event.target (the element that fired the event)
+//   'it'     -> event.currentTarget (the element with the listener)
+//   'source' -> activeTarget (the element providing form data)
+//   default  -> the transmission's payload target
+function resolveContextTarget(value, target, context) {
+    if (value === 'this') return context.event.target
+    if (value === 'it') return context.event.currentTarget
+    if (value === 'source') return context.activeTarget
+    return target
+}
+
+// Executes an @-prefixed action instruction.
+//   action: the action name without '@' prefix (e.g., 'click', 'focus')
+//   value:  the action's value — context selector ('this','it','source'), data (URL, message), or null
+//   target: the default target element (payloadTarget)
+//   context: { event, activeTarget }
+function applyAction(action, value, target, context) {
+    const el = resolveContextTarget(value, target, context)
+
+    switch (action) {
+        case 'click': el.click(); break
+        case 'focus': el.focus(); break
+        case 'blur': el.blur(); break
+        case 'submit': el.submit(); break
+        case 'reset': el.reset(); break
+        case 'remove': el.remove(); break
+
+        case 'select':
+            if (el.select) { el.select() }
+            else {
+                let selection = window.getSelection()
+                let range = document.createRange()
+                range.selectNodeContents(el)
+                selection.removeAllRanges()
+                selection.addRange(range)
+            }
+            break
+
+        case 'end':
+            if (el.tagName === 'INPUT') {
+                el.selectionStart = el.value.length
+            } else {
+                let range = document.createRange()
+                let sel = window.getSelection()
+                range.setStart(el, 1)
+                range.collapse(true)
+                sel.removeAllRanges()
+                sel.addRange(range)
+            }
+            break
+
+        case 'show':
+            if (el.show) { el.show() }
+            else {
+                el.style.display = el.getAttribute('x-display')
+                el.removeAttribute('x-display')
+            }
+            break
+
+        case 'hide':
+            if (el.hide) { el.hide() }
+            else {
+                el.setAttribute('x-display', el.style.display)
+                el.style.display = 'none'
+            }
+            break
+
+        case 'open':
+            if (typeof value === 'string' && value.startsWith('http')) { window.open(value); break }
+            if (el.tagName === 'DETAILS') { el.setAttribute('open', 'true') }
+            else if (el.tagName === 'DIALOG') { el.show() }
+            else { el.open() }
+            break
+
+        case 'close':
+            if (value === 'window') { window.close(); break }
+            if (el.tagName === 'DETAILS') { el.removeAttribute('open') }
+            else { el.close() }
+            break
+
+        case 'clear':
+            if (el.value) { el.value = '' }
+            else { el.innerHTML = '' }
+            break
+
+        case 'nudge':
+            el.dispatchEvent(new CustomEvent('nudge', { bubbles: true }))
+            break
+
+        case 'scroll-to': target.scrollTo(value); break
+        case 'scroll-by': target.scrollBy(value); break
+        case 'scroll-into-view': target.scrollIntoView(value); break
+
+        case 'reload': window.location.reload(); break
+        case 'redirect': if (value) window.location.href = value; break
+        case 'back': window.history.back(); break
+        case 'forward': window.history.forward(); break
+        case 'replace': if (value) window.history.replaceState(null, null, value); break
+        case 'print': window.print(); break
+
+        case 'download':
+            if (value) {
+                const a = document.createElement('a')
+                a.href = value; a.download = ''; a.click()
+            }
+            break
+
+        case 'alert': alert(value); break
+        case 'log': console.log(value); break
+        case 'table': console.table(value); break
+    }
+}
+
 // Parses an event to determine the payloadTarget element
 function getTargetElement(event) {
     let target = event.currentTarget.getAttribute('target')
