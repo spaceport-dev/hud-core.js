@@ -128,13 +128,13 @@ When a Launchpad event is triggered, a rich payload of contextual data is automa
 | Category | Property | Description |
 | :--- | :--- | :--- |
 | **Element Value** | `value` | The primary value of the element. This is intelligently determined: it can be an `<input>`'s text, a checkbox's state, a file's content as Base64, or the trimmed `innerHTML` of a standard element. |
-| **Element Info** | `elementId`, `tagName`, `classList`, `innerText`, `textContent` | Core properties of the `activeTarget` element (see `source` attribute below). |
+| **Element Info** | `elementId`, `tagName`, `classList`, `innerText`, `textContent`, `contentEditable`, `bind` | Core properties of the `activeTarget` element (see `source` attribute below). `classList` is sent as an array. `contentEditable` is `"true"` only if the element is editable. `bind` is the value of the `bind` attribute, if present. |
 | **Event Info** | `key`, `keyCode`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `repeat` | Details for keyboard events. Note: shiftKey, ctrlKey, etc. appear only if `true`. |
-| | `clientX`, `clientY`, `pageX`, `pageY`, `button`, `buttons`, `offsetX`, `offsetY`, `movementX`, `movementY` | Details for mouse events. |
-| **Form Data** | `[input-name]` | If the element is inside a `<form>`, all named inputs from that form are automatically included by their `name` attribute. Launchpad correctly handles text fields, textareas, checkboxes, radio buttons, select lists (single and multiple), and file inputs. |
-| **Custom Data** | `[data-attribute]` | All `data-*` attributes on the element are sent as top-level properties in the `t` object (e.g., `data-user-id="123"` becomes `t.userId`). |
+| | `clientX`, `clientY`, `screenX`, `screenY`, `pageX`, `pageY`, `button`, `buttons`, `offsetX`, `offsetY`, `movementX`, `movementY` | Details for mouse events. |
+| **Form Data** | `[input-name]` | If the element is inside a `<form>`, all named inputs from that form are automatically included by their `name` attribute. Launchpad correctly handles text fields, textareas, checkboxes (sent as `true`/`false`), radio buttons, select lists (single and multiple), and file inputs. Date and time inputs (`date`, `datetime-local`, `month`, `week`, `time`) are automatically converted to milliseconds since epoch. |
+| **Custom Data** | `[data-attribute]` | All `data-*` attributes on the element are sent as top-level properties in the `t` object with the `data-` prefix stripped (e.g., `data-user-id="123"` becomes `t['user-id']`). |
 | **URL Data** | `[query-param]` | All query parameters from the current page's URL are included as top-level properties. |
-| **Included Data** | `[storage-key]` | You can use the `include` attribute on an element to explicitly send specific `localStorage` (`*key`) or `sessionStorage` (`~key`) values. You can also include standard element attributes by name (e.g., `include="id, *theme"`). |
+| **Included Data** | `[storage-key]` | You can use the `include` attribute on an element to explicitly send specific `localStorage` (`~key`) or `sessionStorage` (`~~key`) values. You can also include standard element attributes by name, or use `all-attributes` to include every attribute on the element (e.g., `include="id, ~theme"` or `include="all-attributes"`). |
 
 ### **Working with the `t` Object on the Server**
 
@@ -331,7 +331,7 @@ An Array transmission applies a sequence of instructions to the target element. 
 
 | Prefix | Behavior | Example (Groovy) |
 | :--- | :--- | :--- |
-| **`@`** | Triggers an action (`@click`, `@focus`, `@blur`, `@select`, `@submit`, `@reset`, `@remove`, `@show`, `@hide`, `@scroll-to`, `@clear`, `@reload`, `@back`, `@forward`, `@print`). | `['@focus', '@select']` |
+| **`@`** | Triggers an action. All actions from the reference table above are supported: `@click`, `@focus`, `@blur`, `@select`, `@end`, `@submit`, `@reset`, `@show`, `@hide`, `@open`, `@close`, `@remove`, `@clear`, `@nudge`, `@scroll-to`, `@scroll-by`, `@scroll-into-view`, `@reload`, `@redirect`, `@back`, `@forward`, `@replace`, `@print`, `@download`, `@alert`, `@log`, `@table`. | `['@focus', '@select']` |
 | **`+`** | **Adds** a CSS class. | `['+active', '+processing']` |
 | **`-`** | **Removes** a CSS class. | `['-active', '-processing']` |
 | **(none)** | **Toggles** a CSS class. | `['selected', 'active']` |
