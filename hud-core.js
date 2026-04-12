@@ -408,13 +408,17 @@ function resolveTarget(targetString, element, wrapper = 'div') {
             return element.parentElement?.parentElement?.children[parseInt(element.getAttribute('index'), 10)] || null
 
         default:
-            if (targetString.startsWith('>')) {
-                return element.querySelector(targetString.substring(1))
+            try {
+                if (targetString.startsWith('>')) {
+                    return element.querySelector(targetString.substring(1))
+                }
+                if (targetString.startsWith('<')) {
+                    return element.closest(targetString.substring(1))
+                }
+                return document.querySelector(targetString) || null
+            } catch (e) {
+                return null
             }
-            if (targetString.startsWith('<')) {
-                return element.closest(targetString.substring(1))
-            }
-            return document.querySelector(targetString) || null
     }
 }
 
@@ -586,17 +590,19 @@ function applyInstructions(target, payload, context) {
     for (let key in payload) {
         const value = payload[key]
 
+        // Actions — checked first since @actions can take object values (scroll options, console data)
+        if (key.startsWith('@')) { applyAction(key.substring(1), value, target, context) }
+
         // BUNDLED DETECTION: if value is array or non-null object, key is a selector
-        if (value !== null && typeof value === 'object') {
+        else if (value !== null && typeof value === 'object') {
             const resolved = resolveTarget(key, context.sourceTarget)
             if (resolved) {
                 applyInstructions(resolved, value, { ...context, outerMode: false })
             }
-            continue
         }
 
         // Content operations
-        if (key === 'value') { target.value = value }
+        else if (key === 'value') { target.value = value }
         else if (key === 'innerHTML') { target.innerHTML = value }
         else if (key === 'outerHTML') { target.outerHTML = value }
         else if (key === 'innerText') { target.innerText = value }
@@ -617,9 +623,6 @@ function applyInstructions(target, payload, context) {
 
         // Inline styles
         else if (key.startsWith('&')) { target.style[key.substring(1)] = value }
-
-        // Actions
-        else if (key.startsWith('@')) { applyAction(key.substring(1), value, target, context) }
 
         // Session storage
         else if (key.startsWith('~~')) { sessionStorage.setItem(key.substring(2), value) }
