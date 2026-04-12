@@ -169,9 +169,15 @@ def processOrder = { t ->
         // ... process order with correct data types
     }
 
-    // Return a transmission to give updates and feedback using a direct hypertext replacement
-    // along with a targeted transmission
-    return [ '#order-status' : 'Order processed!', 'disabled' : 'true' ]
+    // Return a bundled transmission that updates the button AND the status display
+    return [
+        'disabled': true,
+        '+confirmed': 'it',
+        '#order-status': [
+            '+visible',
+            ['innerHTML': "Order placed! ${quantity} items, \$${price * quantity} total"]
+        ]
+    ]
 }
 %>
 
@@ -246,7 +252,7 @@ The simplest transmission. When your server action returns a single value (a str
 return "Last saved: ${new Date().format('h:mm:ss a')}"
 ```
 
-This is all you need for straightforward content updates. For anything more — toggling classes, setting attributes, triggering actions, or updating multiple elements — you'll use instruction transmissions.
+This is all you need for straightforward content updates. For anything more — toggling classes, setting attributes, triggering actions, or updating multiple elements — you'll use bundled transmissions.
 
 -----
 
@@ -432,7 +438,7 @@ Here’s how you can put these concepts together in a real Launchpad template. T
 
 ### **Example 1: Simple Action**
 
-This example uses an Array Transmission to perform a single, parameter-less action. No data is needed from the client, and the action (`@print`) affects the whole browser window.
+This example uses an array transmission to perform a single, parameter-less action. No data is needed from the client, and the action (`@print`) affects the whole browser window.
 
 ```html
 <button on-click="${ _{ [ '@print' ] }}">
@@ -473,18 +479,30 @@ This example shows a form that, upon submission, sends all its input values to t
 
 ### **Example 3: Inline Action with Contextual Data**
 
-Here, we're iterating through a list of participants. The `on-click` action needs to know *which* participant to remove. We pass the unique `participant.cookie` from the current loop iteration directly into the server-side `removeParticipant` method. The transmission then targets the parent `<div>` and removes it from the page, providing instant feedback.
+Here, we're iterating through a list of participants. The `on-click` action needs to know *which* participant to remove. We pass the unique `participant.cookie` from the current loop iteration directly into the server-side `removeParticipant` method. The transmission removes the entry from the page and updates the participant count — all in one response.
 
 ```html
+<h3>Participants (<span id="participant-count">${ participants.size() }</span>)</h3>
+
 <div class='participant-entry'>
     <strong>${ participant.name }</strong>
 
     <span target='parent' style='cursor: pointer;'
-          on-click=${ _{ gb.removeParticipant(participant.cookie); [ '@remove' ] }}>
+          on-click=${ _{ 
+              gb.removeParticipant(participant.cookie)
+              return [
+                  '@remove',
+                  ['#participant-count': [
+                      'innerText': gb.fetchParticipants().size()
+                  ]]
+              ]
+          }}>
         🗑️
     </span>
 </div>
 ```
+
+The array transmission removes the parent element (`@remove`), then the embedded map targets `#participant-count` to update the displayed count. Previously, you'd need a separate mechanism to keep the count in sync.
 
 
 ## **UI/UX Pattern Examples**
@@ -538,48 +556,39 @@ This pattern allows users to click an "Edit" button to turn a piece of text into
 
 ### **Pattern 2: "Load More" Button**
 
-This pattern is used for paginating through a long list of items without full page reloads. It uses the `append` transmission to add new items to the list and can hide itself when there's no more data.
+This pattern paginates through a list without full page reloads. Using a bundled transmission, one response appends items to the list, updates the button's state, and shows a count — all targeting different elements.
 
 ```groovy
 <%
-    // Server-side function to fetch a "page" of items
     def getItems = { page = 0, perPage = 5 ->
-        // In a real app, this would be a database query
         def allItems = (1..20).collect { "Item #$it" }
         def start = page * perPage
         def end = Math.min(start + perPage, allItems.size())
-        if (start >= allItems.size()) return [:]
-        return [
-            items: allItems[start..<end],
-            hasMore: end < allItems.size()
-        ]
+        if (start >= allItems.size()) return [items: [], hasMore: false, total: allItems.size()]
+        return [items: allItems[start..<end], hasMore: end < allItems.size(), total: allItems.size()]
     }
 
-    // Closure for the button's on-click event
     def loadMoreItems = { t ->
-        // Get the next page number from the button's data attribute
-        def nextPage = t.page.toInteger()
+        def nextPage = t.getInteger('page')
         def results = getItems(nextPage)
-
-        // Build the HTML for the new items
         def newItemsHtml = results.items.collect { "<li>${it}</li>" }.join('')
 
-        // Build the transmission
+        // One response targets the list, the button, and the count
         def transmission = [
-            // Use 'append' on the <ul> to add the new items
-            append: newItemsHtml,
-            // Update the button's data-page attribute for the next click
-            '#page': nextPage + 1
+            '#item-list': ['append': newItemsHtml],
+            '*page': nextPage + 1,
+            '#item-count': "Showing ${Math.min((nextPage + 1) * 5, results.total)} of ${results.total}"
         ]
 
-        // If there are no more items, add an instruction to hide the button
         if (!results.hasMore) {
-            transmission['@hide'] = 'it' // 'it' refers to the button itself
+            transmission['@hide'] = 'it'
         }
 
         return transmission
     }
 %>
+
+<p id="item-count">Showing 5 of 20</p>
 
 <ul id="item-list">
     <% getItems().items.each { item -> %>
@@ -587,14 +596,71 @@ This pattern is used for paginating through a long list of items without full pa
     <% } %>
 </ul>
 
-<button target="#item-list"
+<button target="self"
         data-page="1"
         on-click=${ _{ t -> loadMoreItems(t) }}>
     Load More
 </button>
 ```
 
-### **Pattern 3: Coordinated Multi-Element Update**
+Notice the button targets `self` now — it doesn't need to be aimed at the list because the bundled entry `'#item-list': ['append': ...]` handles that. The button manages its own state (`*page`, `@hide`) while the list and count are updated by selector.
+
+### **Pattern 3: Form Validation with Per-Field Errors**
+
+Bundled transmissions make server-side form validation clean — one response can mark individual fields as invalid, show per-field error messages, and update a summary, all without any client-side JavaScript.
+
+```groovy
+<%
+    def validateSignup = { t ->
+        def errors = [:]
+        if (!t.getString('email')?.contains('@')) errors.email = 'Please enter a valid email'
+        if (t.getString('password')?.length() < 8) errors.password = 'Must be at least 8 characters'
+        if (t.getString('password') != t.getString('confirm')) errors.confirm = 'Passwords do not match'
+
+        if (errors) {
+            // Build a bundled transmission targeting each error span
+            def transmission = ['-loading': 'it']
+            errors.each { field, message ->
+                // Target the error span next to each input and the input itself
+                transmission["#${field}-error"] = message
+                transmission["#${field}-input"] = ['+invalid', ['*error': message]]
+            }
+            transmission['#form-status'] = [
+                '+has-errors',
+                ['innerHTML': "${errors.size()} field(s) need attention"]
+            ]
+            return transmission
+        }
+
+        // Success — create the account and show confirmation
+        createAccount(t.getString('email'), t.getString('password'))
+        return [
+            '@redirect': '/welcome'
+        ]
+    }
+%>
+
+<form on-submit=${ _{ t -> validateSignup(t) }} target="self">
+    <div>
+        <input id="email-input" name="email" placeholder="Email">
+        <span id="email-error" class="error"></span>
+    </div>
+    <div>
+        <input id="password-input" name="password" type="password" placeholder="Password">
+        <span id="password-error" class="error"></span>
+    </div>
+    <div>
+        <input id="confirm-input" name="confirm" type="password" placeholder="Confirm">
+        <span id="confirm-error" class="error"></span>
+    </div>
+    <div id="form-status"></div>
+    <button type="submit">Sign Up</button>
+</form>
+```
+
+Each field gets its error message set via `#field-error` selector, and the input itself gets an `invalid` class and a data attribute via bundled instructions. Previously, you'd need to pick a single target for the transmission and handle the rest with client-side code.
+
+### **Pattern 4: Coordinated Multi-Element Update**
 
 This pattern shows how a single form submission can update multiple regions of the page at once — the form itself, a results panel, and a status bar — using a bundled transmission.
 
