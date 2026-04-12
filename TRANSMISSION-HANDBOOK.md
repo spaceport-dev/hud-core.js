@@ -30,7 +30,7 @@ Why use Transmissions? To eliminate the need for custom JavaScript for common UI
 **Core Example:** Here is a simple button that updates itself after being clicked.
 
 ```html
-<button target="self" on-click=${ _{ ['innerText': 'Confirmed!', '+confirmed': 'it'] }}>
+<button target="self" on-click=${ _{ ['+confirmed', ['innerText': 'Confirmed!']] }}>
     Confirm
 </button>
 ```
@@ -38,11 +38,11 @@ Why use Transmissions? To eliminate the need for custom JavaScript for common UI
 **What's Happening?**
 
 1.  **`on-click`**: The user clicks the button, triggering a server action.
-2.  **Server Logic**: The Groovy code `_{ ... }` runs on the server. It doesn't need to perform any complex logic; it just returns a Map Transmission.
-3.  **Transmission**: The map `['innerText': 'Confirmed!', '+confirmed': 'it']` is sent back to the browser.
-4.  **UI Update**: Launchpad receives the map and follows its instructions:
-      * `'innerText': 'Confirmed!'` tells it to change the button's text.
-      * `'+confirmed': 'it'` tells it to add the CSS class `confirmed` to the button itself (`it`).
+2.  **Server Logic**: The Groovy code `_{ ... }` runs on the server. It returns a bundled transmission.
+3.  **Transmission**: The array `['+confirmed', ['innerText': 'Confirmed!']]` is sent back to the browser.
+4.  **UI Update**: Launchpad receives the array and processes each item:
+      * `'+confirmed'` adds the CSS class `confirmed` to the button.
+      * `['innerText': 'Confirmed!']` is an embedded map — it sets the button's text.
 
 **Another Rationale: Server State–The Single Source of Truth**
 
