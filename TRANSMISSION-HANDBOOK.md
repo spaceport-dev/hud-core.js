@@ -8,13 +8,11 @@ Welcome to the definitive guide for using **Transmissions** in your Spaceport ap
 
 A **Transmission** is a JSON payload returned from a server-side action that instructs the client's browser on how to update the user interface. It allows your backend (Groovy) code to directly and precisely manipulate DOM elements, trigger events, and control browser behavior without requiring a full page reload. This server-driven approach keeps your presentation logic clean and centralized.
 
-There are three primary formats for a transmission, each suited for different use cases:
+Transmissions come in three forms that compose together:
 
-  * **🗺️ Map Transmission:** The most powerful and flexible format, for performing multiple, complex operations.
-  * **⛓️ Array Transmission:** A concise format for chaining a sequence of simple actions or class changes.
-  * **📦 Single Value Transmission:** The simplest format, for directly updating an element's content.
-
-These formats can be composed together using **Bundled Transmissions** — a single response that updates multiple elements across the page by nesting instruction sets under selector keys.
+  * **📦 Single Value:** Return a string to replace an element's content — the simplest case.
+  * **🎛️ Instructions:** Return a Map or Array to perform precise operations — set attributes, toggle classes, trigger actions, update content, and more.
+  * **🎯 Multi-Element:** Use selector keys inside maps to target other elements on the page, each with their own instruction set.
 
 ## **Some Important Context**
 
@@ -237,11 +235,31 @@ The `outer` value is a special modifier. It targets the element itself (just lik
 
 ## **Transmission Formats**
 
-### 🗺️ The Map Transmission (`[key: value]`)
+### 📦 Single Value Transmissions
 
-A Map transmission is a Groovy map (`[key: value]`) where each key-value pair represents a specific instruction for the client. This is the most common and versatile format.
+The simplest transmission. When your server action returns a single value (a string or number), it directly updates the content of the target element.
 
-#### **Content & Attribute Manipulation**
+  * **Default Behavior:** Launchpad intelligently places the content in the `.value` property (for inputs) or the `innerHTML` (for other elements).
+  * **`target="outer"` Override:** If the triggering element has `target="outer"`, the **entire target element is replaced** by the returned string.
+
+```groovy
+// Returns a string — the target element's content is replaced
+return "Last saved: ${new Date().format('h:mm:ss a')}"
+```
+
+This is all you need for straightforward content updates. For anything more — toggling classes, setting attributes, triggering actions, or updating multiple elements — you'll use instruction transmissions.
+
+-----
+
+### 🎛️ Instruction Transmissions
+
+When you need more than a content replacement, return a **Map** or **Array** from your server action. Each entry in the map or array is an instruction that Launchpad applies to the target element. Maps and arrays compose together freely — arrays can contain maps, and maps can contain arrays — so you're never locked into one format.
+
+#### **Using Maps**
+
+A Map transmission is a Groovy map (`[key: value]`) where each key-value pair is an instruction. The key's prefix determines the operation:
+
+**Content & Attributes**
 
 | Prefix / Key | Description | Example (Groovy) |
 | :--- | :--- | :--- |
@@ -256,7 +274,7 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | **`insertAfter`** | Inserts HTML immediately after the target element. | `['insertAfter': '<hr>']` |
 | **`insertBefore`** | Inserts HTML immediately before the target element. | `['insertBefore': '<h2>Section Start</h2>']` |
 
-#### **Styling & Classes**
+**Styling & Classes**
 
 | Prefix | Description | Example (Groovy) |
 | :--- | :--- | :--- |
@@ -264,7 +282,7 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | **`+`** | Adds a CSS class to the target element. | `['+is-valid': 'it', '+highlight': 'this']` |
 | **`-`** | Removes a CSS class from the target element. | `['-is-loading': 'it']` |
 
-#### **Element & Form Actions (`@` prefix)**
+**Element & Form Actions (`@` prefix)**
 
 | Action Key | Description | Value Type(s) | Example (Groovy) |
 | :--- | :--- | :--- | :--- |
@@ -281,15 +299,7 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | **`@download`** | Triggers a file download. | `String (URL)` | `['@download': '/path/to/report.pdf']` |
 | **`@nudge`** | Triggers a nudge event. | `null`, `'this'`, `'it'`, `'source'` | `['@nudge': 'it']` |
 
-#### Action Targets: `this`, `it`, and `source`
-When you specify an action in a Map Transmission, you can control which element the action applies to.
-
-* **Default (no value or `null`)**: The action applies to the **`payloadTarget`**, which is the element determined by the main `target` attribute.
-* `'this'`: The action applies to the **`event.target`**, which is the specific element the user actually clicked or interacted with.
-* `'it'`: The action applies to the **`event.currentTarget`**, which is the element that has the `on-*` event listener attached to it.
-* `'source'`: The action applies to the **`activeTarget`**, which is the element that provided the data payload (as determined by the `source` attribute).
-
-#### **Browser & Storage Control**
+**Browser & Storage**
 
 | Prefix / Key | Description | Value Type(s) | Example (Groovy) |
 | :--- | :--- | :--- | :--- |
@@ -301,164 +311,119 @@ When you specify an action in a Map Transmission, you can control which element 
 | **`@back`, `@forward`** | Navigates back or forward in the browser's history. | `null` | `['@back': null]` |
 | **`@print`** | Opens the browser's print dialog. | `null` | `['@print': null]` |
 
-#### **Selector-Based Map Entries**
+#### Action Targets: `this`, `it`, and `source`
 
-In addition to using a target attribute, Map Transmissions support selector-style keys for direct DOM updates. These selector entries always perform an innerHTML replacement on the matched element(s).
+Actions and class operations accept a value that controls which element they apply to:
 
-| Key Format |	Behavior |	Example |
-| :--- | :--- | :--- |
-| `#id` | Updates the element with a specific ID.	| `['#status': 'Saved!']` |
-| `> selector`	| Finds a descendant of the source element.	| `['> .details': '<p>Updated details</p>']` |
-| `< selector` |	Finds the closest ancestor of the source element.	| `['< section': '<h2>Section Removed</h2>']` |
-| `Any other selector` |	Treated as a global querySelector against the document.	| `['.notification': '<div>New Notice</div>']` |
+* **Default (no value or `null`)**: Applies to the **payload target** — the element determined by the `target` attribute.
+* `'this'`: Applies to the **`event.target`** — the specific element the user actually clicked or interacted with.
+* `'it'`: Applies to the **`event.currentTarget`** — the element that has the `on-*` event listener attached to it.
+* `'source'`: Applies to the **`activeTarget`** — the element that provided the data payload (as determined by the `source` attribute).
 
-These entries do not require a target attribute. The key itself determines where the content is applied. If you do specify a target on the element, both the target and the selector entries can be combined in the same transmission.
+#### **Using Arrays**
 
-**Working Together: Targets + Selectors**
-
-One of the most powerful patterns is combining targeted updates with selector-based replacements.
-
-For example, you can:
-* Use a target to update the element the action is bound to (change attributes, toggle classes, disable a button, etc.).
-* At the same time, use a #id or > selector entry to update a different region of the DOM with fresh HTML.
-
-**Example:**
-
-```groovy
-// Returning from a on-click bound to a button.
-return [
-    'disabled': true,          // disables the button (targeted element)
-    '+loading': 'it',          // adds a 'loading' class to the button
-    '#order-status': 'Saving…' // updates the status display by selector
-]
-```
-
-Here, the target ensures the button reflects its new state, while the selector-based entry updates a completely separate element. This dual mechanism allows a single server action to coordinate stateful changes (attributes, classes) and content updates (innerHTML replacement) across the DOM.
-
-#### **Bundled Transmissions: Full Instruction Sets on Selector Keys**
-
-Selector-based entries like `#id` and `> selector` are powerful, but they only set `innerHTML`. What if you need to add classes, set attributes, or trigger actions on a different element — all from the same transmission?
-
-**Bundled transmissions** unlock this. When a map entry's value is an **Array or Map** (instead of a simple string), the key is treated as a selector and the value becomes a full instruction set applied to the resolved element.
-
-**The Rule:** Scalar value → instruction on the target. Array or Map value → bundled instruction set on the selector.
-
-```groovy
-// Simple selector — sets innerHTML (existing behavior)
-return ['#status': 'Saved!']
-
-// Bundled selector — full instruction set (new behavior)
-return ['#status': ['-loading', '+saved', ['innerText': 'Saved!', '&color': 'green']]]
-```
-
-Bundled entries support all the same selectors as the `target` attribute — named targets (`parent`, `self`, `next`, etc.) resolved relative to the event source, plus any CSS selector.
-
-**Example: Multi-Target Update**
-
-A single server action that updates the button, a status panel, and a notification tray:
-
-```groovy
-return [
-    'disabled': true,                            // disables the button (targeted element)
-    '+confirmed': 'it',                          // adds class to the button
-    'parent': ['-loading', '+done'],             // removes/adds classes on the parent
-    '#status-panel': ['innerHTML': '<p>Order confirmed!</p>', '&opacity': '1'],
-    '#notification-tray': ['append': '<div class="toast">Order #1042 placed</div>']
-]
-```
-
-**What's Happening?**
-
-1. `'disabled': true` and `'+confirmed': 'it'` are scalar values — they operate on the button (the targeted element), just like before.
-2. `'parent': ['-loading', '+done']` has an Array value — so `parent` is resolved as a selector (the button's parent element), and the array `['-loading', '+done']` is applied as class instructions.
-3. `'#status-panel'` and `'#notification-tray'` have Map/Array values — each is resolved via CSS selector, and the nested instructions are applied to those elements.
-
-**Bundled entries compose with regular entries freely.** A single map can mix targeted instructions (scalar values) and bundled instructions (array/object values) in any order.
-
-**Example: Top-Level Array with Bundled Entries**
-
-If your transmission's primary purpose is actions/classes on the target, but you also want to update other elements, use an Array as the top-level format with Map items for bundled updates:
-
-```groovy
-return [
-    '+active',                                        // add class to target
-    '@focus',                                         // focus the target
-    ['#tray': ['append': '<span>New item</span>']],   // bundled: append to #tray
-    ['parent': ['-loading']]                          // bundled: remove class from parent
-]
-```
-
-Here, string items (`'+active'`, `'@focus'`) apply to the target as usual. Map items within the array are processed as bundled instructions — each key is resolved as a selector.
-
-
-### ⛓️ The Array Transmission (`[...]`)
-
-An Array transmission is a shorthand for applying a sequence of simple, parameter-less instructions to the target element. It's perfect for managing classes and chaining basic actions.
-
-#### **Class Manipulation**
+An Array transmission applies a sequence of instructions to the target element. Each string item is an action or class operation:
 
 | Prefix | Behavior | Example (Groovy) |
 | :--- | :--- | :--- |
-| **(none)** | **Toggles** a CSS class. If it exists, it's removed; if not, it's added. | `['selected', 'active']` |
+| **`@`** | Triggers an action (`@click`, `@focus`, `@blur`, `@select`, `@submit`, `@reset`, `@remove`, `@show`, `@hide`, `@scroll-to`, `@clear`, `@reload`, `@back`, `@forward`, `@print`). | `['@focus', '@select']` |
 | **`+`** | **Adds** a CSS class. | `['+active', '+processing']` |
 | **`-`** | **Removes** a CSS class. | `['-active', '-processing']` |
-
-#### **Chaining Actions (`@` prefix)**
-
-You can trigger a sequence of actions on the target element.
-
-  * **Supported Actions:** `@click`, `@focus`, `@blur`, `@select`, `@submit`, `@reset`, `@remove`, `@show`, `@hide`, `@scroll-to`, `@clear`, `@reload`, `@back`, `@forward`, `@print`.
-
-**Example:**
+| **(none)** | **Toggles** a CSS class. | `['selected', 'active']` |
 
 ```groovy
-// On form submission success:
-// 1. Remove the 'processing' class from the form.
-// 2. Add the 'completed' class to the form.
-// 3. Clear the text inside the '#response-message' element.
-// 4. Toggle the 'visible' class on it.
+// Remove 'processing', add 'completed', clear the target, toggle 'visible'
 return ['-processing', '+completed', '@clear', 'visible']
 ```
 
-#### **Embedding Keyed Instructions (Maps-in-Lists)**
-
-Array items are typically strings, but you can also include **Map items** to perform keyed operations (content, attributes, styles) without switching to a full Map Transmission. This is useful when you want the clean, concise array syntax for actions and classes but also need to set content or attributes.
+Arrays can also contain **Map items** for keyed operations — content, attributes, styles — without switching to a full map format:
 
 ```groovy
-// Mix actions, classes, AND keyed instructions in one array
+// Actions and classes as strings, content and styles as an embedded map
 return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>', '&color': 'green']]
 ```
 
-**What's Happening?**
-
-1. `'+active'`, `'@focus'`, `'-loading'` — string items, processed as class changes and actions on the target.
-2. `['innerHTML': '<p>Done!</p>', '&color': 'green']` — a Map item, processed as keyed instructions on the same target. Sets the innerHTML and an inline style.
-
-This eliminates the need to "throw away" values when using a Map Transmission just for a few classes and actions. Compare:
+This is cleaner than using a map when most of your instructions are actions or classes:
 
 ```groovy
-// Before: Map format with wasted values
+// Map format — values are wasted on the actions/classes
 return ['+active': '', '@focus': '', '-loading': '', 'innerHTML': '<p>Done!</p>']
 
-// After: Array with embedded map — cleaner, no wasted values
+// Array with embedded map — same result, no wasted values
 return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>']]
 ```
 
 -----
 
-### 📦 The Single Value Transmission (`"string"`)
+### 🎯 Targeting Other Elements
 
-This is the simplest transmission format. When your server action returns a single, non-JSON value (like a plain string), it's used to directly update the content of the target element.
+So far, every instruction has operated on the target element — the one determined by the `target` attribute. But a single transmission can also update **other elements** across the page.
 
-  * **Default Behavior:** Launchpad intelligently places the content in the `.value` property (for inputs) or the `innerHTML` (for other elements).
-  * **`target="outer"` Override:** If the triggering element has `target="outer"`, the **entire target element is replaced** by the returned string.
+#### **Selector Keys with Scalar Values**
 
-<!-- end list -->
+In a map, certain key prefixes target elements by selector and set their `innerHTML`:
+
+| Key Format | Behavior | Example |
+| :--- | :--- | :--- |
+| `#id` | Updates the element with a specific ID. | `['#status': 'Saved!']` |
+| `> selector` | Finds a descendant of the source element. | `['> .details': '<p>Updated details</p>']` |
+
+These work alongside regular instructions in the same map:
 
 ```groovy
-// Groovy action to get a status message
-return "Last saved: ${new Date().format('h:mm:ss a')}"
+return [
+    'disabled': true,          // instruction on the target (button)
+    '+loading': 'it',          // class on the button
+    '#order-status': 'Saving…' // innerHTML on a different element
+]
 ```
+
+#### **Selector Keys with Instruction Sets (Bundled Transmissions)**
+
+When a map entry's value is an **Array or Map** (instead of a scalar), the key is treated as a selector and the value becomes a **full instruction set** applied to the resolved element. This is the bundled transmission pattern.
+
+**The Rule:** Scalar value → instruction on the target. Array or Map value → instruction set on the selector.
+
+```groovy
+// Scalar value — sets innerHTML of #status
+return ['#status': 'Saved!']
+
+// Array value — applies a full instruction set to #status
+return ['#status': ['-loading', '+saved', ['innerText': 'Saved!', '&color': 'green']]]
+```
+
+Selector keys support all the same values as the `target` attribute — named targets (`parent`, `self`, `next`, `grandparent`, etc.) resolved relative to the event source, plus any CSS selector (`#id`, `.class`, `div > span`, etc.).
+
+**Example: Multi-Element Update**
+
+A single server action that updates the button, its parent, a status panel, and a notification tray:
+
+```groovy
+return [
+    'disabled': true,                            // target: set attribute
+    '+confirmed': 'it',                          // target: add class
+    'parent': ['-loading', '+done'],             // parent: remove/add classes
+    '#status-panel': ['innerHTML': '<p>Order confirmed!</p>', '&opacity': '1'],
+    '#notification-tray': ['append': '<div class="toast">Order #1042 placed</div>']
+]
+```
+
+Scalar entries (`disabled`, `+confirmed`) apply to the target element. Array/Map entries (`parent`, `#status-panel`, `#notification-tray`) resolve the key as a selector and apply the nested instructions to that element.
+
+**Bundled Entries in Arrays**
+
+Arrays can also carry bundled entries — just include a Map item where the keys are selectors:
+
+```groovy
+return [
+    '+active',                                        // target: add class
+    '@focus',                                         // target: focus
+    ['#tray': ['append': '<span>New item</span>']],   // #tray: append content
+    ['parent': ['-loading']]                          // parent: remove class
+]
+```
+
+String items apply to the target. Map items are processed as instructions — and if a map entry's value is an array or map, it's bundled just like in a top-level map.
 
 -----
 
