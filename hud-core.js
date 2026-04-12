@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 setupOnAttribute(eventName, node)
                             }
                         }
+                        shimOnNudge(node)
 
                         // Evaluate any scripts
                         if (node.tagName === 'SCRIPT') {
@@ -157,6 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         setupOnAttribute(eventName, child)
                                     }
                                 }
+                                shimOnNudge(child)
 
                                 if (child.hasAttribute('href')) {
                                     setupHREF(child)
@@ -287,6 +289,9 @@ document.addEventListener('DOMContentLoaded', function() {
         })
     })
 
+    // Shim inline onnudge attributes on existing elements
+    document.querySelectorAll('[onnudge]').forEach(shimOnNudge)
+
     // Elements that have a HREF attribute will be automatically registered for click events
     // and will navigate the page to the specified URL.
     document.querySelectorAll('[href]').forEach(element => {
@@ -356,6 +361,18 @@ const builtInEvents = [
     'on-formblur',
     'on-nudge'
 ]
+
+
+// Shims inline onnudge attributes so they work like native inline event handlers.
+// Browsers only auto-wire on* attributes for built-in events, so custom events
+// like 'nudge' need manual wiring.
+function shimOnNudge(element) {
+    if (element.hasAttribute('onnudge') && !element._nudgeShimmed) {
+        const handler = element.getAttribute('onnudge')
+        element.addEventListener('nudge', new Function('event', handler))
+        element._nudgeShimmed = true
+    }
+}
 
 
 // Resolves a target string to a DOM element relative to a reference element.
