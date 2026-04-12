@@ -14,6 +14,8 @@ There are three primary formats for a transmission, each suited for different us
   * **⛓️ Array Transmission:** A concise format for chaining a sequence of simple actions or class changes.
   * **📦 Single Value Transmission:** The simplest format, for directly updating an element's content.
 
+These formats can be composed together using **Bundled Transmissions** — a single response that updates multiple elements across the page by nesting instruction sets under selector keys.
+
 ## **Some Important Context**
 
 You may find yourself here without an idea of what Launchpad and Spaceport are. Spaceport is a full-stack web application framework that uses Groovy in combination with other standard web technologies. Find more information in the Spaceport Manual [https://spaceport.com.co/docs/](https://spaceport.com.co/docs/).
@@ -333,6 +335,61 @@ return [
 
 Here, the target ensures the button reflects its new state, while the selector-based entry updates a completely separate element. This dual mechanism allows a single server action to coordinate stateful changes (attributes, classes) and content updates (innerHTML replacement) across the DOM.
 
+#### **Bundled Transmissions: Full Instruction Sets on Selector Keys**
+
+Selector-based entries like `#id` and `> selector` are powerful, but they only set `innerHTML`. What if you need to add classes, set attributes, or trigger actions on a different element — all from the same transmission?
+
+**Bundled transmissions** unlock this. When a map entry's value is an **Array or Map** (instead of a simple string), the key is treated as a selector and the value becomes a full instruction set applied to the resolved element.
+
+**The Rule:** Scalar value → instruction on the target. Array or Map value → bundled instruction set on the selector.
+
+```groovy
+// Simple selector — sets innerHTML (existing behavior)
+return ['#status': 'Saved!']
+
+// Bundled selector — full instruction set (new behavior)
+return ['#status': ['-loading', '+saved', ['innerText': 'Saved!', '&color': 'green']]]
+```
+
+Bundled entries support all the same selectors as the `target` attribute — named targets (`parent`, `self`, `next`, etc.) resolved relative to the event source, plus any CSS selector.
+
+**Example: Multi-Target Update**
+
+A single server action that updates the button, a status panel, and a notification tray:
+
+```groovy
+return [
+    'disabled': true,                            // disables the button (targeted element)
+    '+confirmed': 'it',                          // adds class to the button
+    'parent': ['-loading', '+done'],             // removes/adds classes on the parent
+    '#status-panel': ['innerHTML': '<p>Order confirmed!</p>', '&opacity': '1'],
+    '#notification-tray': ['append': '<div class="toast">Order #1042 placed</div>']
+]
+```
+
+**What's Happening?**
+
+1. `'disabled': true` and `'+confirmed': 'it'` are scalar values — they operate on the button (the targeted element), just like before.
+2. `'parent': ['-loading', '+done']` has an Array value — so `parent` is resolved as a selector (the button's parent element), and the array `['-loading', '+done']` is applied as class instructions.
+3. `'#status-panel'` and `'#notification-tray'` have Map/Array values — each is resolved via CSS selector, and the nested instructions are applied to those elements.
+
+**Bundled entries compose with regular entries freely.** A single map can mix targeted instructions (scalar values) and bundled instructions (array/object values) in any order.
+
+**Example: Top-Level Array with Bundled Entries**
+
+If your transmission's primary purpose is actions/classes on the target, but you also want to update other elements, use an Array as the top-level format with Map items for bundled updates:
+
+```groovy
+return [
+    '+active',                                        // add class to target
+    '@focus',                                         // focus the target
+    ['#tray': ['append': '<span>New item</span>']],   // bundled: append to #tray
+    ['parent': ['-loading']]                          // bundled: remove class from parent
+]
+```
+
+Here, string items (`'+active'`, `'@focus'`) apply to the target as usual. Map items within the array are processed as bundled instructions — each key is resolved as a selector.
+
 
 ### ⛓️ The Array Transmission (`[...]`)
 
@@ -361,6 +418,30 @@ You can trigger a sequence of actions on the target element.
 // 3. Clear the text inside the '#response-message' element.
 // 4. Toggle the 'visible' class on it.
 return ['-processing', '+completed', '@clear', 'visible']
+```
+
+#### **Embedding Keyed Instructions (Maps-in-Lists)**
+
+Array items are typically strings, but you can also include **Map items** to perform keyed operations (content, attributes, styles) without switching to a full Map Transmission. This is useful when you want the clean, concise array syntax for actions and classes but also need to set content or attributes.
+
+```groovy
+// Mix actions, classes, AND keyed instructions in one array
+return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>', '&color': 'green']]
+```
+
+**What's Happening?**
+
+1. `'+active'`, `'@focus'`, `'-loading'` — string items, processed as class changes and actions on the target.
+2. `['innerHTML': '<p>Done!</p>', '&color': 'green']` — a Map item, processed as keyed instructions on the same target. Sets the innerHTML and an inline style.
+
+This eliminates the need to "throw away" values when using a Map Transmission just for a few classes and actions. Compare:
+
+```groovy
+// Before: Map format with wasted values
+return ['+active': '', '@focus': '', '-loading': '', 'innerHTML': '<p>Done!</p>']
+
+// After: Array with embedded map — cleaner, no wasted values
+return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>']]
 ```
 
 -----
@@ -548,3 +629,53 @@ This pattern is used for paginating through a long list of items without full pa
     Load More
 </button>
 ```
+
+### **Pattern 3: Coordinated Multi-Element Update (Bundled Transmission)**
+
+This pattern shows how a single form submission can update multiple regions of the page at once — the form itself, a results panel, and a status bar — using a bundled transmission.
+
+```groovy
+<%
+    def submitSearch = { t ->
+        def query = t.getString('query')
+        def results = searchService.find(query)
+        def resultsHtml = results.collect { """
+            <div class="result">
+                <strong>${ it.title }</strong>
+                <p>${ it.snippet }</p>
+            </div>
+        """ }.join('')
+
+        return [
+            // Target element (the form): disable while showing results
+            '@clear': 'source',
+
+            // Bundled: update the results panel with full instruction set
+            '#results-panel': [
+                '+has-results',
+                '-empty',
+                ['innerHTML': resultsHtml, '*query': query]
+            ],
+
+            // Bundled: update the status bar
+            '#status-bar': ['innerText': "${results.size()} results for '${query}'"]
+        ]
+    }
+%>
+
+<form on-submit=${ _{ t -> submitSearch(t) }} target="self">
+    <input name="query" placeholder="Search...">
+    <button type="submit">Search</button>
+</form>
+
+<div id="results-panel" class="empty"></div>
+<div id="status-bar"></div>
+```
+
+**What's Happening?**
+
+1. `'@clear': 'source'` is a scalar value — it clears the form's input (the source element).
+2. `'#results-panel': ['+has-results', '-empty', ['innerHTML': ..., '*query': ...]]` has an Array value — so `#results-panel` is resolved as a selector. The array is applied as a sequence: add a class, remove a class, then set innerHTML and a data attribute via the embedded map.
+3. `'#status-bar': ['innerText': "..."]` has a Map value — resolved as a selector, then the inner map sets the text content.
+
+All three updates happen from a single server response — no extra requests, no client-side JavaScript.
