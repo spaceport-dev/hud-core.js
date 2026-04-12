@@ -1,4 +1,4 @@
-// HUD-CORE v1.1.3
+// HUD-CORE v1.2.0
 
 // This file enabled web-HUD features for Launchpad, the reative
 // templating engine for Spaceport. Include this file in your
