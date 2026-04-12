@@ -171,12 +171,12 @@ def processOrder = { t ->
 
     // Return a bundled transmission that updates the button AND the status display
     return [
-        'disabled': true,
-        '+confirmed': 'it',
-        '#order-status': [
+        '+confirmed',
+        ['disabled': true],
+        ['#order-status': [
             '+visible',
             ['innerHTML': "Order placed! ${quantity} items, \$${price * quantity} total"]
-        ]
+        ]]
     ]
 }
 %>
@@ -284,8 +284,8 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair is
 | Prefix | Description | Example (Groovy) |
 | :--- | :--- | :--- |
 | **`&`** | Sets an inline CSS style property on the target element. | `['&backgroundColor': 'yellow', '&fontWeight': 'bold']` |
-| **`+`** | Adds a CSS class to the target element. | `['+is-valid': 'it', '+highlight': 'this']` |
-| **`-`** | Removes a CSS class from the target element. | `['-is-loading': 'it']` |
+| **`+`** | Adds a CSS class. In an array: `'+active'`. In a map: `'+active': null`. | `['+is-valid', '+highlight']` |
+| **`-`** | Removes a CSS class. In an array: `'-loading'`. In a map: `'-loading': null`. | `['-is-loading', '-hidden']` |
 
 **Element & Form Actions (`@` prefix)**
 
@@ -316,14 +316,17 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair is
 | **`@back`, `@forward`** | Navigates back or forward in the browser's history. | `null` | `['@back': null]` |
 | **`@print`** | Opens the browser's print dialog. | `null` | `['@print': null]` |
 
-#### Action Targets: `this`, `it`, and `source`
+#### Advanced: Action Targets (`this`, `it`, `source`)
 
-Actions and class operations accept a value that controls which element they apply to:
+Most of the time, actions and class operations apply to the **payload target** — the element determined by the `target` attribute. This is the default when you use `null` or omit the value.
 
-* **Default (no value or `null`)**: Applies to the **payload target** — the element determined by the `target` attribute.
-* `'this'`: Applies to the **`event.target`** — the specific element the user actually clicked or interacted with.
-* `'it'`: Applies to the **`event.currentTarget`** — the element that has the `on-*` event listener attached to it.
-* `'source'`: Applies to the **`activeTarget`** — the element that provided the data payload (as determined by the `source` attribute).
+For **event delegation** scenarios — where the `on-*` listener is on a container but the user clicks a child — you may need to direct an action to a specific element in the event chain:
+
+* `'this'`: The **`event.target`** — the specific element the user actually clicked or interacted with.
+* `'it'`: The **`event.currentTarget`** — the element that has the `on-*` event listener attached to it.
+* `'source'`: The **`activeTarget`** — the element that provided the data payload (as determined by the `source` attribute).
+
+These are rarely needed. If your element targets `self` or a specific selector, the payload target is already the right element. Use `this`/`it`/`source` when you need to distinguish between the listener, the clicked child, and the data source — typically in delegation patterns with the `source` attribute.
 
 #### **Using Arrays**
 
@@ -377,9 +380,9 @@ These work alongside regular instructions in the same map:
 
 ```groovy
 return [
-    'disabled': true,          // instruction on the target (button)
-    '+loading': 'it',          // class on the button
-    '#order-status': 'Saving…' // innerHTML on a different element
+    '+loading',                   // add class to the target (button)
+    ['disabled': true],           // set attribute on the target
+    ['#order-status': 'Saving…']  // innerHTML on a different element
 ]
 ```
 
@@ -405,15 +408,15 @@ A single server action that updates the button, its parent, a status panel, and 
 
 ```groovy
 return [
-    'disabled': true,                            // target: set attribute
-    '+confirmed': 'it',                          // target: add class
-    'parent': ['-loading', '+done'],             // parent: remove/add classes
-    '#status-panel': ['innerHTML': '<p>Order confirmed!</p>', '&opacity': '1'],
-    '#notification-tray': ['append': '<div class="toast">Order #1042 placed</div>']
+    '+confirmed',
+    ['disabled': true],
+    ['parent': ['-loading', '+done']],
+    ['#status-panel': ['innerHTML': '<p>Order confirmed!</p>', '&opacity': '1']],
+    ['#notification-tray': ['append': '<div class="toast">Order #1042 placed</div>']]
 ]
 ```
 
-Scalar entries (`disabled`, `+confirmed`) apply to the target element. Array/Map entries (`parent`, `#status-panel`, `#notification-tray`) resolve the key as a selector and apply the nested instructions to that element.
+String items (`+confirmed`) and embedded maps with scalar values (`disabled`) apply to the target element. Embedded maps with array/map values (`parent`, `#status-panel`, `#notification-tray`) resolve the key as a selector and apply the nested instructions to that element.
 
 **Bundled Entries in Arrays**
 
@@ -581,7 +584,7 @@ This pattern paginates through a list without full page reloads. Using a bundled
         ]
 
         if (!results.hasMore) {
-            transmission['@hide'] = 'it'
+            transmission['@hide'] = null
         }
 
         return transmission
@@ -619,7 +622,7 @@ Bundled transmissions make server-side form validation clean — one response ca
 
         if (errors) {
             // Build a bundled transmission targeting each error span
-            def transmission = ['-loading': 'it']
+            def transmission = ['-loading': null]
             errors.each { field, message ->
                 // Target the error span next to each input and the input itself
                 transmission["#${field}-error"] = message
