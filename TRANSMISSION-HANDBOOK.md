@@ -8,11 +8,10 @@ Welcome to the definitive guide for using **Transmissions** in your Spaceport ap
 
 A **Transmission** is a JSON payload returned from a server-side action that instructs the client's browser on how to update the user interface. It allows your backend (Groovy) code to directly and precisely manipulate DOM elements, trigger events, and control browser behavior without requiring a full page reload. This server-driven approach keeps your presentation logic clean and centralized.
 
-Transmissions come in three forms that compose together:
+Transmissions come in two forms:
 
   * **📦 Single Value:** Return a string to replace an element's content — the simplest case.
-  * **🎛️ Instructions:** Return a Map or Array to perform precise operations — set attributes, toggle classes, trigger actions, update content, and more.
-  * **🎯 Multi-Element:** Use selector keys inside maps to target other elements on the page, each with their own instruction set.
+  * **🎛️ Bundled:** Return a Map or Array to bundle multiple operations into one response — set attributes, toggle classes, trigger actions, update content, and target other elements on the page.
 
 ## **Some Important Context**
 
@@ -251,9 +250,9 @@ This is all you need for straightforward content updates. For anything more — 
 
 -----
 
-### 🎛️ Instruction Transmissions
+### 🎛️ Bundled Transmissions
 
-When you need more than a content replacement, return a **Map** or **Array** from your server action. Each entry in the map or array is an instruction that Launchpad applies to the target element. Maps and arrays compose together freely — arrays can contain maps, and maps can contain arrays — so you're never locked into one format.
+When you need more than a content replacement, return a **Map** or **Array** from your server action. Each entry in the map or array is an operation that Launchpad applies to the target element. Maps and arrays compose together freely — arrays can contain maps, and maps can contain arrays — so you're never locked into one format.
 
 #### **Using Maps**
 
@@ -355,11 +354,11 @@ return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>']]
 
 -----
 
-### 🎯 Targeting Other Elements
+#### **Targeting Other Elements**
 
-So far, every instruction has operated on the target element — the one determined by the `target` attribute. But a single transmission can also update **other elements** across the page.
+So far, every operation has applied to the target element — the one determined by the `target` attribute. But a bundled transmission can also update **other elements** across the page.
 
-#### **Selector Keys with Scalar Values**
+**Selector Keys with Scalar Values**
 
 In a map, certain key prefixes target elements by selector and set their `innerHTML`:
 
@@ -378,11 +377,11 @@ return [
 ]
 ```
 
-#### **Selector Keys with Instruction Sets (Bundled Transmissions)**
+**Selector Keys with Full Instruction Sets**
 
-When a map entry's value is an **Array or Map** (instead of a scalar), the key is treated as a selector and the value becomes a **full instruction set** applied to the resolved element. This is the bundled transmission pattern.
+When a map entry's value is an **Array or Map** (instead of a scalar), the key is treated as a selector and the value becomes a full set of operations applied to that element.
 
-**The Rule:** Scalar value → instruction on the target. Array or Map value → instruction set on the selector.
+**The Rule:** Scalar value → operates on the target. Array or Map value → operates on the selector.
 
 ```groovy
 // Scalar value — sets innerHTML of #status
@@ -595,7 +594,7 @@ This pattern is used for paginating through a long list of items without full pa
 </button>
 ```
 
-### **Pattern 3: Coordinated Multi-Element Update (Bundled Transmission)**
+### **Pattern 3: Coordinated Multi-Element Update**
 
 This pattern shows how a single form submission can update multiple regions of the page at once — the form itself, a results panel, and a status bar — using a bundled transmission.
 
