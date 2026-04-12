@@ -358,17 +358,75 @@ const builtInEvents = [
 ]
 
 
+// Resolves a target string to a DOM element relative to a reference element.
+// Used by getTargetElement() for target-attribute resolution and by
+// applyInstructions() for bundled transmission selector keys.
+function resolveTarget(targetString, element, wrapper = 'div') {
+    switch (targetString) {
+        case 'self':
+        case 'outer':
+            return element
+
+        case 'none':
+            return null
+
+        case 'parent':
+            return element.parentElement
+        case 'grandparent':
+            return element.parentElement?.parentElement
+        case 'next':
+            return element.nextElementSibling
+        case 'previous':
+            return element.previousElementSibling
+        case 'nextnext':
+            return element.nextElementSibling?.nextElementSibling
+        case 'previousprevious':
+            return element.previousElementSibling?.previousElementSibling
+        case 'first':
+            return element.firstElementChild
+        case 'last':
+            return element.lastElementChild
+
+        case 'after':
+            element.insertAdjacentHTML('afterend', `<${wrapper}></${wrapper}>`)
+            return element.nextElementSibling
+        case 'before':
+            element.insertAdjacentHTML('beforebegin', `<${wrapper}></${wrapper}>`)
+            return element.previousElementSibling
+        case 'append':
+            element.insertAdjacentHTML('beforeend', `<${wrapper}></${wrapper}>`)
+            return element.lastElementChild
+        case 'prepend':
+            element.insertAdjacentHTML('afterbegin', `<${wrapper}></${wrapper}>`)
+            return element.firstElementChild
+
+        case 'nth-sibling':
+            return element.parentNode?.children[parseInt(element.getAttribute('index'), 10)] || null
+        case 'nth-child':
+            return element.children[parseInt(element.getAttribute('index'), 10)] || null
+        case 'nth-parent':
+            return element.parentElement?.parentElement?.children[parseInt(element.getAttribute('index'), 10)] || null
+
+        default:
+            if (targetString.startsWith('>')) {
+                return element.querySelector(targetString.substring(1))
+            }
+            if (targetString.startsWith('<')) {
+                return element.closest(targetString.substring(1))
+            }
+            return document.querySelector(targetString) || null
+    }
+}
+
 // Parses an event to determine the payloadTarget element
 function getTargetElement(event) {
     let target = event.currentTarget.getAttribute('target')
     let element = event.currentTarget
 
-    // Set 0 timeout to allow for the event to finish bubbling
     setTimeout(() => { }, 1)
 
     if (target === null && element != null) {
         let parent = element.parentElement
-        // No target, so look for a parent with a target
         while (parent != null) {
             if (parent.hasAttribute('target')) {
                 target = parent.getAttribute('target')
@@ -376,86 +434,14 @@ function getTargetElement(event) {
             }
             parent = parent.parentElement
         }
-        // Can't be guaranteed that there's a parent with a target
         if (parent != null)
             element = parent
     }
 
-
-    // console.log(target)
-
-
-    // Specify 'self' to render back to the element that triggered the event
-    if (target === 'self' || target === 'outer') { // 'outer' is a special case that is handled later
-        return element
-    }
-
-    // Sure, specify 'none'
-    if (target === 'none') {
-        return null
-    }
-
-    // Require a valid target to continue
     if (target == null) return null
 
-    // Some targets involve adding a new element to the DOM, so this provides a way to define a wrapper. Default: <DIV>
-    const tagType = element.hasAttribute('wrapper') ? element.getAttribute('wrapper') : 'div'
-
-    // Now get the target element based on the target string
-    switch (target) {
-        case 'parent':
-            return element.parentElement
-        case 'grandparent':
-            return element.parentElement.parentElement
-
-        case 'next':
-            return element.nextElementSibling
-        case 'previous':
-            return element.previousElementSibling
-        case 'nextnext':
-            return element.nextElementSibling.nextElementSibling
-        case 'previousprevious':
-            return element.previousElementSibling.previousElementSibling
-
-        case 'first':
-            return element.firstElementChild
-        case 'last':
-            return element.lastElementChild
-
-        case 'after':
-            element.insertAdjacentHTML('afterend', `<${tagType}></${tagType}>`)
-            return element.nextElementSibling
-        case 'before':
-            element.insertAdjacentHTML('beforebegin', `<${tagType}></${tagType}>`)
-            return element.previousElementSibling
-        case 'append':
-            element.insertAdjacentHTML('beforeend', `<${tagType}></${tagType}>`)
-            return element.lastElementChild
-        case 'prepend':
-            element.insertAdjacentHTML('afterbegin', `<${tagType}></${tagType}>`)
-            return element.firstElementChild
-
-        case 'nth-sibling':
-            const index = parseInt(element.getAttribute('index'), 10)
-            return element.parentNode?.children[index] || null
-        case 'nth-child':
-            const childIndex = parseInt(element.getAttribute('index'), 10)
-            return element.children[childIndex] || null
-        case 'nth-parent':
-            const parentIndex = parseInt(element.getAttribute('index'), 10)
-            return element.parentElement?.parentElement?.children[parentIndex] || null
-
-        default:
-            if (target.startsWith('>')) {
-                return element.querySelector(target.substring(1))
-            }
-            // Also allow searching ancestors using closest
-            if (target.startsWith('<')) {
-                return element.closest(target.substring(1))
-            }
-            // Anything else is a document querySelector
-            return document.querySelector(target) || null
-    }
+    const wrapper = element.hasAttribute('wrapper') ? element.getAttribute('wrapper') : 'div'
+    return resolveTarget(target, element, wrapper)
 }
 
 
