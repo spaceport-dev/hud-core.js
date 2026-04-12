@@ -23,4 +23,5 @@ Each release includes a minified version for production usage.
 ```
 
 ## Learn more
-For more information about Spaceport, visit the [Spaceport documentation](https://spaceport.sh/docs).
+- [Transmission Handbook](TRANSMISSION-HANDBOOK.md) — comprehensive guide to using Transmissions with Launchpad
+- [Spaceport documentation](https://spaceport.sh/docs) — full framework docs
