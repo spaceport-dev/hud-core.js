@@ -574,7 +574,7 @@ This pattern paginates through a list without full page reloads. Using a bundled
     def loadMoreItems = { t ->
         def nextPage = t.getInteger('page')
         def results = getItems(nextPage)
-        def newItemsHtml = results.items.collect { "<li>${it}</li>" }.join('')
+        def newItemsHtml = results.items.combine { "<li>${it}</li>" }
 
         // One response targets the list, the button, and the count
         def transmission = [
