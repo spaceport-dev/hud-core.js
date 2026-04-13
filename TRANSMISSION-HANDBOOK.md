@@ -672,12 +672,12 @@ This pattern shows how a single form submission can update multiple regions of t
     def submitSearch = { t ->
         def query = t.getString('query')
         def results = searchService.find(query)
-        def resultsHtml = results.collect { """
+        def resultsHtml = results.combine { """
             <div class="result">
                 <strong>${ it.title }</strong>
                 <p>${ it.snippet }</p>
             </div>
-        """ }.join('')
+        """ }
 
         return [
             // Target element (the form): disable while showing results
