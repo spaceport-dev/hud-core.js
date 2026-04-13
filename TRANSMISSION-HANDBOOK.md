@@ -712,3 +712,17 @@ This pattern shows how a single form submission can update multiple regions of t
 3. `'#status-bar': ['innerText': "..."]` has a Map value — resolved as a selector, then the inner map sets the text content.
 
 All three updates happen from a single server response — no extra requests, no client-side JavaScript.
+
+-----
+
+## **What's Next**
+
+This handbook covers the client-side transmission system — what HUD-Core does with the payloads your server sends back. But transmissions are just one piece of the Spaceport + Launchpad stack.
+
+To go deeper:
+
+  * **[Spaceport Documentation](https://spaceport.sh/docs)** — the full framework manual covering routing, documents, alerts, server elements, and more.
+  * **[Launchpad](https://spaceport.sh/docs/launchpad)** — the server-side templating engine that generates transmissions, manages reactive state, and handles the WebSocket connection.
+  * **[Port Mercury](https://github.com/spaceport-dev/port-mercury/)** — a starter kit to see transmissions in action within a real project structure.
+  * **[create-spaceport-app](https://github.com/spaceport-dev/create-spaceport-app)** — scaffold a new project with agentic development tooling and documentation built in.
+  * **[Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/)** — a small real-world app with annotated examples of transmissions, server elements, and other Spaceport features.
