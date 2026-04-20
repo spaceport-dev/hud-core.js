@@ -1,4 +1,4 @@
-// HUD-CORE v1.1.3
+// HUD-CORE v1.2.0
 
 // This file enabled web-HUD features for Launchpad, the reative
 // templating engine for Spaceport. Include this file in your
@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 setupOnAttribute(eventName, node)
                             }
                         }
+                        shimOnNudge(node)
 
                         // Evaluate any scripts
                         if (node.tagName === 'SCRIPT') {
@@ -157,6 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         setupOnAttribute(eventName, child)
                                     }
                                 }
+                                shimOnNudge(child)
 
                                 if (child.hasAttribute('href')) {
                                     setupHREF(child)
@@ -287,6 +289,9 @@ document.addEventListener('DOMContentLoaded', function() {
         })
     })
 
+    // Shim inline onnudge attributes on existing elements
+    document.querySelectorAll('[onnudge]').forEach(shimOnNudge)
+
     // Elements that have a HREF attribute will be automatically registered for click events
     // and will navigate the page to the specified URL.
     document.querySelectorAll('[href]').forEach(element => {
@@ -358,17 +363,329 @@ const builtInEvents = [
 ]
 
 
+// Shims inline onnudge attributes so they work like native inline event handlers.
+// Browsers only auto-wire on* attributes for built-in events, so custom events
+// like 'nudge' need manual wiring.
+function shimOnNudge(element) {
+    if (element.hasAttribute('onnudge') && !element._nudgeShimmed) {
+        const handler = element.getAttribute('onnudge')
+        element.addEventListener('nudge', new Function('event', handler))
+        element._nudgeShimmed = true
+    }
+}
+
+
+// Resolves a target string to a DOM element relative to a reference element.
+// Used by getTargetElement() for target-attribute resolution and by
+// applyInstructions() for bundled transmission selector keys.
+function resolveTarget(targetString, element, wrapper = 'div') {
+    switch (targetString) {
+        case 'self':
+        case 'outer':
+            return element
+
+        case 'none':
+            return null
+
+        case 'parent':
+            return element.parentElement
+        case 'grandparent':
+            return element.parentElement?.parentElement
+        case 'next':
+            return element.nextElementSibling
+        case 'previous':
+            return element.previousElementSibling
+        case 'nextnext':
+            return element.nextElementSibling?.nextElementSibling
+        case 'previousprevious':
+            return element.previousElementSibling?.previousElementSibling
+        case 'first':
+            return element.firstElementChild
+        case 'last':
+            return element.lastElementChild
+
+        case 'after':
+            element.insertAdjacentHTML('afterend', `<${wrapper}></${wrapper}>`)
+            return element.nextElementSibling
+        case 'before':
+            element.insertAdjacentHTML('beforebegin', `<${wrapper}></${wrapper}>`)
+            return element.previousElementSibling
+        case 'append':
+            element.insertAdjacentHTML('beforeend', `<${wrapper}></${wrapper}>`)
+            return element.lastElementChild
+        case 'prepend':
+            element.insertAdjacentHTML('afterbegin', `<${wrapper}></${wrapper}>`)
+            return element.firstElementChild
+
+        case 'nth-sibling':
+            return element.parentNode?.children[parseInt(element.getAttribute('index'), 10)] || null
+        case 'nth-child':
+            return element.children[parseInt(element.getAttribute('index'), 10)] || null
+        case 'nth-parent':
+            return element.parentElement?.parentElement?.children[parseInt(element.getAttribute('index'), 10)] || null
+
+        default:
+            try {
+                if (targetString.startsWith('>')) {
+                    return element.querySelector(targetString.substring(1))
+                }
+                if (targetString.startsWith('<')) {
+                    return element.closest(targetString.substring(1))
+                }
+                return document.querySelector(targetString) || null
+            } catch (e) {
+                return null
+            }
+    }
+}
+
+// Resolves the this/it/source context selector to a DOM element.
+// Used by applyAction() to determine which element an action targets.
+//   'this'   -> event.target (the element that fired the event)
+//   'it'     -> event.currentTarget (the element with the listener)
+//   'source' -> activeTarget (the element providing form data)
+//   default  -> the transmission's payload target
+function resolveContextTarget(value, target, context) {
+    if (value === 'this') return context.event.target
+    if (value === 'it') return context.event.currentTarget
+    if (value === 'source') return context.activeTarget
+    return target
+}
+
+// Executes an @-prefixed action instruction.
+//   action: the action name without '@' prefix (e.g., 'click', 'focus')
+//   value:  the action's value — context selector ('this','it','source'), data (URL, message), or null
+//   target: the default target element (payloadTarget)
+//   context: { event, activeTarget }
+function applyAction(action, value, target, context) {
+    const el = resolveContextTarget(value, target, context)
+
+    switch (action) {
+        case 'click': el.click(); break
+        case 'focus': el.focus(); break
+        case 'blur': el.blur(); break
+        case 'submit': el.submit(); break
+        case 'reset': el.reset(); break
+        case 'remove': el.remove(); break
+
+        case 'select':
+            if (el.select) { el.select() }
+            else {
+                let selection = window.getSelection()
+                let range = document.createRange()
+                range.selectNodeContents(el)
+                selection.removeAllRanges()
+                selection.addRange(range)
+            }
+            break
+
+        case 'end':
+            if (el.tagName === 'INPUT') {
+                el.selectionStart = el.value.length
+            } else {
+                let range = document.createRange()
+                let sel = window.getSelection()
+                range.setStart(el, 1)
+                range.collapse(true)
+                sel.removeAllRanges()
+                sel.addRange(range)
+            }
+            break
+
+        case 'show':
+            if (el.show) { el.show() }
+            else {
+                el.style.display = el.getAttribute('x-display')
+                el.removeAttribute('x-display')
+            }
+            break
+
+        case 'hide':
+            if (el.hide) { el.hide() }
+            else {
+                el.setAttribute('x-display', el.style.display)
+                el.style.display = 'none'
+            }
+            break
+
+        case 'open':
+            if (typeof value === 'string' && value.startsWith('http')) { window.open(value); break }
+            if (el.tagName === 'DETAILS') { el.setAttribute('open', 'true') }
+            else if (el.tagName === 'DIALOG') { el.show() }
+            else { el.open() }
+            break
+
+        case 'close':
+            if (value === 'window') { window.close(); break }
+            if (el.tagName === 'DETAILS') { el.removeAttribute('open') }
+            else if (el.tagName === 'DIALOG') { el.close() }
+            else { el.closest('dialog')?.close() }
+            break
+
+        case 'clear':
+            if (el.value) { el.value = '' }
+            else { el.innerHTML = '' }
+            break
+
+        case 'nudge':
+            el.dispatchEvent(new CustomEvent('nudge', { bubbles: true }))
+            break
+
+        case 'scroll-to': target.scrollTo(value); break
+        case 'scroll-by': target.scrollBy(value); break
+        case 'scroll-into-view': target.scrollIntoView(value); break
+
+        case 'reload': window.location.reload(); break
+        case 'redirect': if (value) window.location.href = value; break
+        case 'back': window.history.back(); break
+        case 'forward': window.history.forward(); break
+        case 'replace': if (value) window.history.replaceState(null, null, value); break
+        case 'print': window.print(); break
+
+        case 'download':
+            if (value) {
+                const a = document.createElement('a')
+                a.href = value; a.download = ''; a.click()
+            }
+            break
+
+        case 'alert': alert(value); break
+        case 'log': console.log(value); break
+        case 'table': console.table(value); break
+    }
+}
+
+// Recursively applies a transmission payload to a target DOM element.
+//   target:  the DOM element to operate on
+//   payload: string (set content), array (sequential instructions), or object (keyed instructions)
+//   context: { event, activeTarget, sourceTarget, outerMode }
+//     - event:        the original DOM event
+//     - activeTarget: the element providing form data ('source' context)
+//     - sourceTarget: the original event source element (for resolving named targets in bundled entries)
+//     - outerMode:    if true, string payloads replace outerHTML instead of innerHTML (top-level only)
+function applyInstructions(target, payload, context) {
+
+    // STRING PAYLOAD: set content directly
+    if (typeof payload === 'string' || (payload != null && !(payload instanceof Object) && !Array.isArray(payload))) {
+        if (target == null) return
+        if (context.outerMode) {
+            target.outerHTML = payload
+        } else if (target.value) {
+            target.value = payload
+        } else if (target.setValue) {
+            target.setValue(payload)
+        } else {
+            target.innerHTML = payload
+        }
+        return
+    }
+
+    if (payload == null) return
+
+    // ARRAY PAYLOAD: sequential instructions (strings for actions/classes, objects processed recursively)
+    if (Array.isArray(payload)) {
+        payload.forEach(item => {
+            if (typeof item === 'object' && item !== null) {
+                // Maps-in-lists: process object as keyed instructions on same target
+                applyInstructions(target, item, { ...context, outerMode: false })
+            } else if (typeof item === 'string') {
+                if (item.startsWith('@')) {
+                    applyAction(item.substring(1), null, target, context)
+                } else if (item.startsWith('-')) {
+                    target.classList.remove(item.substring(1))
+                } else if (item.startsWith('+')) {
+                    target.classList.add(item.substring(1))
+                } else {
+                    target.classList.toggle(item)
+                }
+            }
+        })
+        return
+    }
+
+    // OBJECT PAYLOAD: keyed instructions
+    for (let key in payload) {
+        const value = payload[key]
+
+        // Actions — checked first since @actions can take object values (scroll options, console data)
+        if (key.startsWith('@')) { applyAction(key.substring(1), value, target, context) }
+
+        // BUNDLED DETECTION: if value is array or non-null object, key is a selector
+        else if (value !== null && typeof value === 'object') {
+            const resolved = resolveTarget(key, context.sourceTarget)
+            if (resolved) {
+                applyInstructions(resolved, value, { ...context, outerMode: false })
+            }
+        }
+
+        // Content operations
+        else if (key === 'value') { target.value = value }
+        else if (key === 'innerHTML') { target.innerHTML = value }
+        else if (key === 'outerHTML') { target.outerHTML = value }
+        else if (key === 'innerText') { target.innerText = value }
+        else if (key === 'append') { target.insertAdjacentHTML('beforeend', value) }
+        else if (key === 'prepend') { target.insertAdjacentHTML('afterbegin', value) }
+        else if (key.toLowerCase() === 'insertbefore') { target.insertAdjacentHTML('beforebegin', value) }
+        else if (key.toLowerCase() === 'insertafter') { target.insertAdjacentHTML('afterend', value) }
+
+        // URL query string
+        else if (key.startsWith('?')) {
+            const url = new URL(window.location.href)
+            url.searchParams.set(key.substring(1), value)
+            window.history.pushState({}, '', url)
+        }
+
+        // Data attributes
+        else if (key.startsWith('*')) { target.dataset[key.substring(1)] = value }
+
+        // Inline styles
+        else if (key.startsWith('&')) { target.style[key.substring(1)] = value }
+
+        // Session storage
+        else if (key.startsWith('~~')) { sessionStorage.setItem(key.substring(2), value) }
+
+        // Local storage
+        else if (key.startsWith('~')) { localStorage.setItem(key.substring(1), value) }
+
+        // Class add
+        else if (key.startsWith('+')) {
+            resolveContextTarget(value, target, context).classList.add(key.substring(1))
+        }
+
+        // Class remove
+        else if (key.startsWith('-')) {
+            resolveContextTarget(value, target, context).classList.remove(key.substring(1))
+        }
+
+        // Element by ID — innerHTML shorthand
+        else if (key.startsWith('#')) {
+            const el = document.getElementById(key.substring(1))
+            if (el) el.innerHTML = value
+        }
+
+        // Descendant selector — innerHTML shorthand
+        else if (key.startsWith('>')) {
+            const el = context.activeTarget.querySelector(key.substring(1))
+            if (el) el.innerHTML = value
+        }
+
+        // Default: set as HTML attribute (null removes it)
+        else if (target) {
+            if (value == null) { target.removeAttribute(key) }
+            else { target.setAttribute(key, value) }
+        }
+    }
+}
+
 // Parses an event to determine the payloadTarget element
 function getTargetElement(event) {
     let target = event.currentTarget.getAttribute('target')
     let element = event.currentTarget
 
-    // Set 0 timeout to allow for the event to finish bubbling
     setTimeout(() => { }, 1)
 
     if (target === null && element != null) {
         let parent = element.parentElement
-        // No target, so look for a parent with a target
         while (parent != null) {
             if (parent.hasAttribute('target')) {
                 target = parent.getAttribute('target')
@@ -376,86 +693,14 @@ function getTargetElement(event) {
             }
             parent = parent.parentElement
         }
-        // Can't be guaranteed that there's a parent with a target
         if (parent != null)
             element = parent
     }
 
-
-    // console.log(target)
-
-
-    // Specify 'self' to render back to the element that triggered the event
-    if (target === 'self' || target === 'outer') { // 'outer' is a special case that is handled later
-        return element
-    }
-
-    // Sure, specify 'none'
-    if (target === 'none') {
-        return null
-    }
-
-    // Require a valid target to continue
     if (target == null) return null
 
-    // Some targets involve adding a new element to the DOM, so this provides a way to define a wrapper. Default: <DIV>
-    const tagType = element.hasAttribute('wrapper') ? element.getAttribute('wrapper') : 'div'
-
-    // Now get the target element based on the target string
-    switch (target) {
-        case 'parent':
-            return element.parentElement
-        case 'grandparent':
-            return element.parentElement.parentElement
-
-        case 'next':
-            return element.nextElementSibling
-        case 'previous':
-            return element.previousElementSibling
-        case 'nextnext':
-            return element.nextElementSibling.nextElementSibling
-        case 'previousprevious':
-            return element.previousElementSibling.previousElementSibling
-
-        case 'first':
-            return element.firstElementChild
-        case 'last':
-            return element.lastElementChild
-
-        case 'after':
-            element.insertAdjacentHTML('afterend', `<${tagType}></${tagType}>`)
-            return element.nextElementSibling
-        case 'before':
-            element.insertAdjacentHTML('beforebegin', `<${tagType}></${tagType}>`)
-            return element.previousElementSibling
-        case 'append':
-            element.insertAdjacentHTML('beforeend', `<${tagType}></${tagType}>`)
-            return element.lastElementChild
-        case 'prepend':
-            element.insertAdjacentHTML('afterbegin', `<${tagType}></${tagType}>`)
-            return element.firstElementChild
-
-        case 'nth-sibling':
-            const index = parseInt(element.getAttribute('index'), 10)
-            return element.parentNode?.children[index] || null
-        case 'nth-child':
-            const childIndex = parseInt(element.getAttribute('index'), 10)
-            return element.children[childIndex] || null
-        case 'nth-parent':
-            const parentIndex = parseInt(element.getAttribute('index'), 10)
-            return element.parentElement?.parentElement?.children[parentIndex] || null
-
-        default:
-            if (target.startsWith('>')) {
-                return element.querySelector(target.substring(1))
-            }
-            // Also allow searching ancestors using closest
-            if (target.startsWith('<')) {
-                return element.closest(target.substring(1))
-            }
-            // Anything else is a document querySelector
-            return document.querySelector(target) || null
-    }
+    const wrapper = element.hasAttribute('wrapper') ? element.getAttribute('wrapper') : 'div'
+    return resolveTarget(target, element, wrapper)
 }
 
 
@@ -908,537 +1153,15 @@ async function fetchDataAndUpdate(event, url) {
     // Spaceport FATAL-ERROR
     if (text.startsWith('<fatal')) { payloadTarget.setAttribute('fatal-error', 'true') }
 
-    // Is the payload text or json?
-    if (payload && (payload instanceof Object || payload instanceof Array)) {
-
-        // If the payload is an array, then it is a list of class names (or actions)
-        if (Array.isArray(payload)) {
-            payload.forEach(className => {
-                if (!className.startsWith) {
-                    // Not a String
-                } else if (className.startsWith('@')) {
-                    if (className === '@click') {
-                        payloadTarget.click()
-                    } else if (className === '@focus') {
-                        payloadTarget.focus()
-                    } else if (className === '@blur') {
-                        payloadTarget.blur()
-                    } else if (className === '@select') {
-                        payloadTarget.select()
-                    } else if (className === '@submit') {
-                        payloadTarget.submit()
-                    } else if (className === '@reset') {
-                        payloadTarget.reset()
-                    } else if (className === '@remove') {
-                        payloadTarget.remove()
-                    } else if (className === '@show') {
-                        if (payloadTarget.show) {
-                            payloadTarget.show()
-                        } else {
-                            payloadTarget.style.display = payloadTarget.getAttribute('x-display')
-                            payloadTarget.removeAttribute('x-display')
-                        }
-                    } else if (className === '@hide') {
-                        if (payloadTarget.hide) {
-                            payloadTarget.hide()
-                        } else {
-                            payloadTarget.setAttribute('x-display', payloadTarget.style.display)
-                            payloadTarget.style.display = 'none'
-                        }
-                    } else if (className === '@scroll-to') {
-                        payloadTarget.scrollTo()
-                    } else if (className === '@clear') {
-                        if (payloadTarget.value) {
-                            payloadTarget.value = ''
-                        } else {
-                            payloadTarget.innerHTML = ''
-                        }
-                    } else if (className === '@reload') {
-                        window.location.reload()
-                    } else if (className === '@back') {
-                        window.history.back()
-                    } else if (className === '@forward') {
-                        window.history.forward()
-                    } else if (className === '@print') {
-                        window.print()
-                    }
-                }
-
-                // If the class name starts with a '-', then remove the class
-                else if (className.startsWith('-')) {
-                    className = className.substring(1)
-                    payloadTarget.classList.remove(className)
-                } else if (className.startsWith('+')) {
-                    className = className.substring(1)
-                    payloadTarget.classList.add(className)
-                } else {
-                    // toggle
-                    if (payloadTarget.classList.contains(className)) {
-                        payloadTarget.classList.remove(className)
-                    } else {
-                        payloadTarget.classList.add(className)
-                    }
-                }
-            })
-        }
-
-        // If the payload is an object, then it might be attributes, styles, or data
-        else if (typeof payload === 'object') {
-            for (let key in payload) {
-                if (key === 'value') {
-                    payloadTarget.value = payload[key]
-                } else if (key.toLowerCase() === 'insertbefore') {
-                    payloadTarget.insertAdjacentHTML('beforebegin', payload[key])
-                } else if (key.toLowerCase() === 'insertafter') {
-                    payloadTarget.insertAdjacentHTML('afterend', payload[key])
-                } else if (key === 'append'){
-                    payloadTarget.insertAdjacentHTML('beforeend', payload[key])
-                } else if (key === 'prepend') {
-                    payloadTarget.insertAdjacentHTML('afterbegin', payload[key])
-                } else if (key === 'innerHTML') {
-                    payloadTarget.innerHTML = payload[key]
-                } else if (key === 'outerHTML') {
-                    payloadTarget.outerHTML = payload[key]
-                } else if (key === 'innerText') {
-                    payloadTarget.innerText = payload[key]
-                } else if (key.startsWith("?")) {
-                    // Update queryString in the URL
-                    const queryString = key.substring(1)
-                    const url = new URL(window.location.href)
-                    // set the query string using the key as the parameter name and the payload[key] as the value
-                    url.searchParams.set(queryString, payload[key])
-                    // update the location
-                    window.history.pushState({}, '', url)
-                } else if (key.startsWith('*')) {
-                    // * is a data-* attribute, useful since data attributes are sent back as data in a transmission
-                    payloadTarget.dataset[key.substring(1)] = payload[key]
-                } else if(key.startsWith('&')) {
-                    // If the key starts with '&', then it is a style
-                    payloadTarget.style[key.substring(1)] = payload[key]
-                } else if(key.startsWith('@')) {
-                    // If the key starts with '@', it's an action
-                    if (key === '@click') {
-                        if (payload[key] === 'this') {
-                            event.target.click()
-                        } else if (payload[key] === 'it') {
-                            event.currentTarget.click()
-                        } else if (payload[key] === 'source') {
-                            activeTarget.click()
-                        } else {
-                            payloadTarget.click()
-                        }
-                    } else if (key === '@focus') {
-                        if (payload[key] === 'this') {
-                            event.target.focus()
-                        } else if (payload[key] === 'it') {
-                            event.currentTarget.focus()
-                        } else if (payload[key] === 'source') {
-                            activeTarget.focus()
-                        } else {
-                            payloadTarget.focus()
-                        }
-                    } else if (key === '@blur') {
-                        if (payload[key] === 'this') {
-                            event.target.blur()
-                        } else if (payload[key] === 'it') {
-                            event.currentTarget.blur()
-                        } else if (payload[key] === 'source') {
-                            activeTarget.blur()
-                        } else {
-                            payloadTarget.blur()
-                        }
-                    } else if (key === '@select') {
-                        if (payload[key] === 'this') {
-                            if (event.target.select) {
-                                event.target.select()
-                            } else {
-                                let selection = window.getSelection()
-                                let range = document.createRange()
-                                range.selectNodeContents(event.target)
-                                selection.removeAllRanges()
-                                selection.addRange(range)
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.select) {
-                                event.currentTarget.select()
-                            } else {
-                                let selection = window.getSelection()
-                                let range = document.createRange()
-                                range.selectNodeContents(event.currentTarget)
-                                selection.removeAllRanges()
-                                selection.addRange(range)
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.select) {
-                                activeTarget.select()
-                            } else {
-                                let selection = window.getSelection()
-                                let range = document.createRange()
-                                range.selectNodeContents(activeTarget)
-                                selection.removeAllRanges()
-                                selection.addRange(range)
-                            }
-                        } else {
-                            if (payloadTarget.select) {
-                                payloadTarget.select()
-                            } else {
-                                let selection = window.getSelection()
-                                let range = document.createRange()
-                                range.selectNodeContents(payloadTarget)
-                                selection.removeAllRanges()
-                                selection.addRange(range)
-                            }
-                        }
-                    } else if (key === '@end') {
-                        // Move cursor to the end of the input or contenteditable
-                        if (payload[key] === 'this') {
-                            if (event.target.tagName === 'INPUT') {
-                                event.target.selectionStart = event.target.value.length
-                            } else {
-                                let range = document.createRange()
-                                let sel = window.getSelection()
-                                range.setStart(event.target, 1)
-                                range.collapse(true)
-                                sel.removeAllRanges()
-                                sel.addRange(range)
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.tagName === 'INPUT') {
-                                event.currentTarget.selectionStart = event.currentTarget.value.length
-                            } else {
-                                let range = document.createRange()
-                                let sel = window.getSelection()
-                                range.setStart(event.currentTarget, 1)
-                                range.collapse(true)
-                                sel.removeAllRanges()
-                                sel.addRange(range)
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.tagName === 'INPUT') {
-                                activeTarget.selectionStart = activeTarget.value.length
-                            } else {
-                                let range = document.createRange()
-                                let sel = window.getSelection()
-                                range.setStart(activeTarget, 1)
-                                range.collapse(true)
-                                sel.removeAllRanges()
-                                sel.addRange(range)
-                            }
-                        } else {
-                            if (payloadTarget.tagName === 'INPUT') {
-                                payloadTarget.selectionStart = payloadTarget.value.length
-                            } else {
-                                let range = document.createRange()
-                                let sel = window.getSelection()
-                                range.setStart(payloadTarget, 1)
-                                range.collapse(true)
-                                sel.removeAllRanges()
-                                sel.addRange(range)
-                            }
-                        }
-                    } else if (key === '@submit') {
-                        if (payload[key] === 'this') {
-                            event.target.submit()
-                        } else if (payload[key] === 'it') {
-                            event.currentTarget.submit()
-                        } else if (payload[key] === 'source') {
-                            activeTarget.submit()
-                        } else {
-                            payloadTarget.submit()
-                        }
-                    } else if (key === '@reset') {
-                        if (payload[key] === 'this') {
-                            event.target.reset()
-                        } else if (payload[key] === 'it') {
-                            event.currentTarget.reset()
-                        } else if (payload[key] === 'source') {
-                            activeTarget.reset()
-                        } else {
-                            payloadTarget.reset()
-                        }
-                    } else if (key === '@show') {
-                        if (payload[key] === 'this') {
-                            // if has a show() method, then call it
-                            if (event.target.show) {
-                                event.target.show()
-                            }
-
-                            else {
-                                event.target.style.display = event.target.getAttribute('x-display')
-                                event.target.removeAttribute('x-display')
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.show) {
-                                event.currentTarget.show()
-                            } else {
-                                event.currentTarget.style.display = event.currentTarget.getAttribute('x-display')
-                                event.currentTarget.removeAttribute('x-display')
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.show) {
-                                activeTarget.show()
-                            } else {
-                                activeTarget.style.display = activeTarget.getAttribute('x-display')
-                                activeTarget.removeAttribute('x-display')
-                            }
-                        } else {
-                            if (payloadTarget.show) {
-                                payloadTarget.show()
-                            } else {
-                                payloadTarget.style.display = payloadTarget.getAttribute('x-display')
-                                payloadTarget.removeAttribute('x-display')
-                            }
-                        }
-                    } else if (key === '@hide') {
-                        if (payload[key] === 'this') {
-                            // if has a hide() method, then call it
-                            if (event.target.hide) {
-                                event.target.hide()
-                            }
-                            // otherwise update style to 'visibility: hidden'
-                            else {
-                                event.target.setAttribute('x-display', event.target.style.display)
-                                event.target.style.display = 'none'
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.hide) {
-                                event.currentTarget.hide()
-                            } else {
-                                event.currentTarget.setAttribute('x-display', event.currentTarget.style.display)
-                                event.currentTarget.style.display = 'none'
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.hide) {
-                                activeTarget.hide()
-                            } else {
-                                activeTarget.setAttribute('x-display', activeTarget.style.display)
-                                activeTarget.style.display = 'none'
-                            }
-                        } else {
-                            if (payloadTarget.hide) {
-                                payloadTarget.hide()
-                            } else {
-                                payloadTarget.setAttribute('x-display', payloadTarget.style.display)
-                                payloadTarget.style.display = 'none'
-                            }
-                        }
-                    } else if (key === '@open') {
-                        if (payload[key] === 'this') {
-                            if (event.target.tagName === 'DETAILS') {
-                                event.target.setAttribute('open', 'true')
-                            } else if (event.target.tagName === 'DIALOG') {
-                                event.target.show()
-                            } else {
-                                event.target.open()
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.tagName === 'DETAILS') {
-                                event.currentTarget.setAttribute('open', 'true')
-                            } else if (event.currentTarget.tagName === 'DIALOG') {
-                                event.currentTarget.show()
-                            } else {
-                                event.currentTarget.open()
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.tagName === 'DETAILS') {
-                                activeTarget.setAttribute('open', 'true')
-                            } else if (activeTarget.tagName === 'DIALOG') {
-                                activeTarget.show()
-                            } else {
-                                activeTarget.open()
-                            }
-                        } else {
-                            // if the payload[key] is a URL, window.open
-                            if (payload[key].startsWith('http')) {
-                                window.open(payload[key])
-                            } else {
-                                // otherwise, just open the dialog
-                                if (payloadTarget.tagName === 'DETAILS') {
-                                    payloadTarget.setAttribute('open', 'true')
-                                } else if (payloadTarget.tagName === 'DIALOG') {
-                                    payloadTarget.show()
-                                } else {
-                                    payloadTarget.open()
-                                }
-                            }
-                        }
-                    } else if (key === '@close') {
-                        if (payload[key] === 'this') {
-                            if (event.target.tagName === 'DETAILS') {
-                                event.target.removeAttribute('open')
-                            } else if (event.target.tagName === 'DIALOG') {
-                                event.target.close()
-                            } else {
-                                event.target.closest('dialog')?.close()
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.tagName === 'DETAILS') {
-                                event.currentTarget.removeAttribute('open')
-                            } else if (event.currentTarget.tagName === 'DIALOG') {
-                                event.currentTarget.close()
-                            } else {
-                                event.currentTarget.closest('dialog')?.close()
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.tagName === 'DETAILS') {
-                                activeTarget.removeAttribute('open')
-                            } else if (activeTarget.tagName === 'DIALOG') {
-                                activeTarget.close()
-                            } else {
-                                activeTarget.closest('dialog')?.close()
-                            }
-                        } else if (payload[key] === 'window') {
-                            window.close()
-                        } else {
-                            if (payloadTarget.tagName === 'DETAILS') {
-                                payloadTarget.removeAttribute('open')
-                            }
-                            payloadTarget.close()
-                        }
-                    } else if (key === '@scroll-to') {
-                        payloadTarget.scrollTo(payload[key])
-                    } else if (key === '@scroll-by') {
-                        payloadTarget.scrollBy(payload[key])
-                    } else if (key === '@scroll-into-view') {
-                        payloadTarget.scrollIntoView(payload[key])
-                    } else if (key === '@remove') {
-                        if (payload[key] === 'this') {
-                            event.target.remove()
-                        } else if (payload[key] === 'it') {
-                            event.currentTarget.remove()
-                        } else if (payload[key] === 'source') {
-                            activeTarget.remove()
-                        } else {
-                            payloadTarget.remove()
-                        }
-                    } else if (key === '@clear') {
-                        // If the value is 'this', then use the event.target
-                        if (payload[key] === 'this') {
-                            if (event.target.value) {
-                                event.target.value = ''
-                            } else {
-                                event.target.innerHTML = ''
-                            }
-                        } else if (payload[key] === 'it') {
-                            if (event.currentTarget.value) {
-                                event.currentTarget.value = ''
-                            } else {
-                                event.currentTarget.innerHTML = ''
-                            }
-                        } else if (payload[key] === 'source') {
-                            if (activeTarget.value) {
-                                activeTarget.value = ''
-                            } else {
-                                activeTarget.innerHTML = ''
-                            }
-                        } else {
-                            // Set either the value or innerHTML to an empty string
-                            if (payloadTarget.value) {
-                                payloadTarget.value = ''
-                            } else {
-                                payloadTarget.innerHTML = ''
-                            }
-                        }
-                    } else if (key === '@reload') {
-                        window.location.reload()
-                    } else if (key === '@redirect') {
-                        window.location.href = payload[key]
-                    } else if (key === '@back') {
-                        window.history.back()
-                    } else if (key === '@forward') {
-                        window.history.forward()
-                    } else if (key === '@replace') {
-                        window.history.replaceState(null, null, payload[key])
-                    } else if (key === '@download') {
-                        const a = document.createElement('a')
-                        a.href = payload[key]
-                        a.download = ''
-                        a.click()
-                    } else if (key === '@print') {
-                        window.print()
-                    } else if (key === '@alert') {
-                        alert(payload[key])
-                    } else if (key === '@log') {
-                        console.log(payload[key])
-                    } else if (key === '@table') {
-                        console.table(payload[key])
-                    } else if (key === '@nudge') {
-                        // Dispatches a custom 'nudge' event, also server-side enabled
-                        if (payload[key] == 'this') {
-                            event.target.dispatchEvent(new CustomEvent('nudge', { bubbles: true }))
-                        } else if (payload[key] == 'it') {
-                            event.currentTarget.dispatchEvent(new CustomEvent('nudge', { bubbles: true }))
-                        } else if (payload[key] == 'source') {
-                            activeTarget.dispatchEvent(new CustomEvent('nudge', { bubbles: true }) )
-                        } else {
-                            payloadTarget.dispatchEvent(new CustomEvent('nudge', { bubbles: true }) )
-                        }
-                    }
-                } else if (key.startsWith('~~')) {
-                    // If the key starts with '~', then it is sessionstorage
-                    sessionStorage.setItem(key.substring(2), payload[key])
-                } else if (key.startsWith('~')) {
-                    // If the key starts with '*', then it is localstorage
-                    localStorage.setItem(key.substring(1), payload[key])
-                } else if (key.startsWith('+')) {
-                    // If the key starts with '+', then it is a class
-                    if (payload[key] === 'this') {
-                        event.target.classList.add(key.substring(1))
-                    } else if (payload[key] === 'it') {
-                        event.currentTarget.classList.add(key.substring(1))
-                        event.currentTarget.classList.add(key.substring(1))
-                    } else if (payload[key] === 'source') {
-                        activeTarget.classList.add(key.substring(1))
-                    } else {
-                        payloadTarget.classList.add(key.substring(1))
-                    }
-                } else if (key.startsWith('-')) {
-                    // If the key starts with '-', then it is a class
-                    if (payload[key] === 'this') {
-                        event.target.classList.remove(key.substring(1))
-                    } else if (payload[key] === 'it') {
-                        event.currentTarget.classList.remove(key.substring(1))
-                    } else if (payload[key] === 'source') {
-                        activeTarget.classList.remove(key.substring(1))
-                    } else {
-                        payloadTarget.classList.remove(key.substring(1))
-                    }
-                } else if (key.startsWith('#')) {
-                    // If the key starts with '#', we're doing an innerHTML replacement
-                    // on the element that matches the id
-                    document.getElementById(key.substring(1)).innerHTML = payload[key]
-                } else if (key.startsWith('>')) {
-                    // If the key starts with '>', it's a querySelector on the activeTarget
-                    activeTarget.querySelector(key.substring(1)).innerHTML = payload[key]
-                } else {
-                    if (payloadTarget) {
-                        // Otherwise, it is an attribute
-                        if (payload[key] == null) {
-                            payloadTarget.removeAttribute(key)
-                        } else payloadTarget.setAttribute(key, payload[key])
-                    }
-                }
-            }
-        }
-
-    } else {
-        if (payloadTarget == null) return
-
-        if (activeTarget.getAttribute('target') === 'outer') {
-            // Replace the entire payloadTarget with new html
-            payloadTarget.outerHTML = text
-        } else {
-            console.log('+> Standard PAYLOAD-TYPE')
-            // Default is to update the value or innerHTML
-            if (payloadTarget.value) {
-                payloadTarget.value = text
-            } else if (payloadTarget.setValue) {
-                payloadTarget.setValue(text)
-            } else {
-                payloadTarget.innerHTML = text
-            }
-        }
+    // Apply transmission payload
+    const context = {
+        event,
+        activeTarget,
+        sourceTarget: activeTarget,
+        outerMode: activeTarget.getAttribute('target') === 'outer'
     }
+    const instruction = (payload && (payload instanceof Object || payload instanceof Array)) ? payload : text
+    applyInstructions(payloadTarget, instruction, context)
 }
 
 

@@ -8,17 +8,16 @@ Welcome to the definitive guide for using **Transmissions** in your Spaceport ap
 
 A **Transmission** is a JSON payload returned from a server-side action that instructs the client's browser on how to update the user interface. It allows your backend (Groovy) code to directly and precisely manipulate DOM elements, trigger events, and control browser behavior without requiring a full page reload. This server-driven approach keeps your presentation logic clean and centralized.
 
-There are three primary formats for a transmission, each suited for different use cases:
+Transmissions come in two forms:
 
-  * **🗺️ Map Transmission:** The most powerful and flexible format, for performing multiple, complex operations.
-  * **⛓️ Array Transmission:** A concise format for chaining a sequence of simple actions or class changes.
-  * **📦 Single Value Transmission:** The simplest format, for directly updating an element's content.
+  * **📦 Single Value:** Return a string to replace an element's content — the simplest case.
+  * **🎛️ Bundled:** Return a Map or Array to bundle multiple operations into one response — set attributes, toggle classes, trigger actions, update content, and target other elements on the page.
 
 ## **Some Important Context**
 
 You may find yourself here without an idea of what Launchpad and Spaceport are. Spaceport is a full-stack web application framework that uses Groovy in combination with other standard web technologies. Find more information in the Spaceport Manual [https://spaceport.com.co/docs/](https://spaceport.com.co/docs/).
 
-Ready to hop right in to the Spaceport ecosystem? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers–or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. 
+Ready to hop right in to the Spaceport ecosystem? Check out [Port Mercury](https://github.com/spaceport-dev/port-mercury/), a starter kit for Spaceport that uses Launchpad, Transmissions, and other features that Spaceport offers–or check out [Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/), a small real-world application built with Spaceport that contains plenty of comments, hints, and Spaceport features. You can also use [create-spaceport-app](https://github.com/spaceport-dev/create-spaceport-app) to scaffold a new project with an agentic workflow — it sets up a Spaceport app with AI-assisted development tooling and documentation built in.
 
 This guide for Transmissions will serve as an onboarding for Launchpad Transmissions, but will also be useful as a handbook as reference for Launchpad Transmission syntax as you build your application.
 
@@ -31,7 +30,7 @@ Why use Transmissions? To eliminate the need for custom JavaScript for common UI
 **Core Example:** Here is a simple button that updates itself after being clicked.
 
 ```html
-<button target="self" on-click=${ _{ ['innerText': 'Confirmed!', '+confirmed': 'it'] }}>
+<button target="self" on-click=${ _{ ['+confirmed', ['innerText': 'Confirmed!']] }}>
     Confirm
 </button>
 ```
@@ -39,11 +38,11 @@ Why use Transmissions? To eliminate the need for custom JavaScript for common UI
 **What's Happening?**
 
 1.  **`on-click`**: The user clicks the button, triggering a server action.
-2.  **Server Logic**: The Groovy code `_{ ... }` runs on the server. It doesn't need to perform any complex logic; it just returns a Map Transmission.
-3.  **Transmission**: The map `['innerText': 'Confirmed!', '+confirmed': 'it']` is sent back to the browser.
-4.  **UI Update**: Launchpad receives the map and follows its instructions:
-      * `'innerText': 'Confirmed!'` tells it to change the button's text.
-      * `'+confirmed': 'it'` tells it to add the CSS class `confirmed` to the button itself (`it`).
+2.  **Server Logic**: The Groovy code `_{ ... }` runs on the server. It returns a bundled transmission.
+3.  **Transmission**: The array `['+confirmed', ['innerText': 'Confirmed!']]` is sent back to the browser.
+4.  **UI Update**: Launchpad receives the array and processes each item:
+      * `'+confirmed'` adds the CSS class `confirmed` to the button.
+      * `['innerText': 'Confirmed!']` is an embedded map — it sets the button's text.
 
 **Another Rationale: Server State–The Single Source of Truth**
 
@@ -129,13 +128,13 @@ When a Launchpad event is triggered, a rich payload of contextual data is automa
 | Category | Property | Description |
 | :--- | :--- | :--- |
 | **Element Value** | `value` | The primary value of the element. This is intelligently determined: it can be an `<input>`'s text, a checkbox's state, a file's content as Base64, or the trimmed `innerHTML` of a standard element. |
-| **Element Info** | `elementId`, `tagName`, `classList`, `innerText`, `textContent` | Core properties of the `activeTarget` element (see `source` attribute below). |
+| **Element Info** | `elementId`, `tagName`, `classList`, `innerText`, `textContent`, `contentEditable`, `bind` | Core properties of the `activeTarget` element (see `source` attribute below). `classList` is sent as an array. `contentEditable` is `"true"` only if the element is editable. `bind` is the value of the `bind` attribute, if present. |
 | **Event Info** | `key`, `keyCode`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `repeat` | Details for keyboard events. Note: shiftKey, ctrlKey, etc. appear only if `true`. |
-| | `clientX`, `clientY`, `pageX`, `pageY`, `button`, `buttons`, `offsetX`, `offsetY`, `movementX`, `movementY` | Details for mouse events. |
-| **Form Data** | `[input-name]` | If the element is inside a `<form>`, all named inputs from that form are automatically included by their `name` attribute. Launchpad correctly handles text fields, textareas, checkboxes, radio buttons, select lists (single and multiple), and file inputs. |
-| **Custom Data** | `[data-attribute]` | All `data-*` attributes on the element are sent as top-level properties in the `t` object (e.g., `data-user-id="123"` becomes `t.userId`). |
+| | `clientX`, `clientY`, `screenX`, `screenY`, `pageX`, `pageY`, `button`, `buttons`, `offsetX`, `offsetY`, `movementX`, `movementY` | Details for mouse events. |
+| **Form Data** | `[input-name]` | If the element is inside a `<form>`, all named inputs from that form are automatically included by their `name` attribute. Launchpad correctly handles text fields, textareas, checkboxes (sent as `true`/`false`), radio buttons, select lists (single and multiple), and file inputs. Date and time inputs (`date`, `datetime-local`, `month`, `week`, `time`) are automatically converted to milliseconds since epoch. |
+| **Custom Data** | `[data-attribute]` | All `data-*` attributes on the element are sent as top-level properties in the `t` object with the `data-` prefix stripped (e.g., `data-user-id="123"` becomes `t['user-id']`). |
 | **URL Data** | `[query-param]` | All query parameters from the current page's URL are included as top-level properties. |
-| **Included Data** | `[storage-key]` | You can use the `include` attribute on an element to explicitly send specific `localStorage` (`*key`) or `sessionStorage` (`~key`) values. You can also include standard element attributes by name (e.g., `include="id, *theme"`). |
+| **Included Data** | `[storage-key]` | You can use the `include` attribute on an element to explicitly send specific `localStorage` (`~key`) or `sessionStorage` (`~~key`) values. You can also include standard element attributes by name, or use `all-attributes` to include every attribute on the element (e.g., `include="id, ~theme"` or `include="all-attributes"`). |
 
 ### **Working with the `t` Object on the Server**
 
@@ -170,9 +169,15 @@ def processOrder = { t ->
         // ... process order with correct data types
     }
 
-    // Return a transmission to give updates and feedback using a direct hypertext replacement
-    // along with a targeted transmission
-    return [ '#order-status' : 'Order processed!', 'disabled' : 'true' ]
+    // Return a bundled transmission that updates the button AND the status display
+    return [
+        '+confirmed',
+        ['disabled': true],
+        ['#order-status': [
+            '+visible',
+            ['innerHTML': "Order placed! ${quantity} items, \$${price * quantity} total"]
+        ]]
+    ]
 }
 %>
 
@@ -235,11 +240,31 @@ The `outer` value is a special modifier. It targets the element itself (just lik
 
 ## **Transmission Formats**
 
-### 🗺️ The Map Transmission (`[key: value]`)
+### 📦 Single Value Transmissions
 
-A Map transmission is a Groovy map (`[key: value]`) where each key-value pair represents a specific instruction for the client. This is the most common and versatile format.
+The simplest transmission. When your server action returns a single value (a string or number), it directly updates the content of the target element.
 
-#### **Content & Attribute Manipulation**
+  * **Default Behavior:** Launchpad intelligently places the content in the `.value` property (for inputs) or the `innerHTML` (for other elements).
+  * **`target="outer"` Override:** If the triggering element has `target="outer"`, the **entire target element is replaced** by the returned string.
+
+```groovy
+// Returns a string — the target element's content is replaced
+return "Last saved: ${new Date().format('h:mm:ss a')}"
+```
+
+This is all you need for straightforward content updates. For anything more — toggling classes, setting attributes, triggering actions, or updating multiple elements — you'll use bundled transmissions.
+
+-----
+
+### 🎛️ Bundled Transmissions
+
+When you need more than a content replacement, return a **Map** or **Array** from your server action. Each entry in the map or array is an operation that Launchpad applies to the target element. Maps and arrays compose together freely — arrays can contain maps, and maps can contain arrays — so you're never locked into one format.
+
+#### **Using Maps**
+
+A Map transmission is a Groovy map (`[key: value]`) where each key-value pair is an instruction. The key's prefix determines the operation:
+
+**Content & Attributes**
 
 | Prefix / Key | Description | Example (Groovy) |
 | :--- | :--- | :--- |
@@ -254,15 +279,15 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | **`insertAfter`** | Inserts HTML immediately after the target element. | `['insertAfter': '<hr>']` |
 | **`insertBefore`** | Inserts HTML immediately before the target element. | `['insertBefore': '<h2>Section Start</h2>']` |
 
-#### **Styling & Classes**
+**Styling & Classes**
 
 | Prefix | Description | Example (Groovy) |
 | :--- | :--- | :--- |
 | **`&`** | Sets an inline CSS style property on the target element. | `['&backgroundColor': 'yellow', '&fontWeight': 'bold']` |
-| **`+`** | Adds a CSS class to the target element. | `['+is-valid': 'it', '+highlight': 'this']` |
-| **`-`** | Removes a CSS class from the target element. | `['-is-loading': 'it']` |
+| **`+`** | Adds a CSS class. In an array: `'+active'`. In a map: `'+active': null`. | `['+is-valid', '+highlight']` |
+| **`-`** | Removes a CSS class. In an array: `'-loading'`. In a map: `'-loading': null`. | `['-is-loading', '-hidden']` |
 
-#### **Element & Form Actions (`@` prefix)**
+**Element & Form Actions (`@` prefix)**
 
 | Action Key | Description | Value Type(s) | Example (Groovy) |
 | :--- | :--- | :--- | :--- |
@@ -279,15 +304,7 @@ A Map transmission is a Groovy map (`[key: value]`) where each key-value pair re
 | **`@download`** | Triggers a file download. | `String (URL)` | `['@download': '/path/to/report.pdf']` |
 | **`@nudge`** | Triggers a nudge event. | `null`, `'this'`, `'it'`, `'source'` | `['@nudge': 'it']` |
 
-#### Action Targets: `this`, `it`, and `source`
-When you specify an action in a Map Transmission, you can control which element the action applies to.
-
-* **Default (no value or `null`)**: The action applies to the **`payloadTarget`**, which is the element determined by the main `target` attribute.
-* `'this'`: The action applies to the **`event.target`**, which is the specific element the user actually clicked or interacted with.
-* `'it'`: The action applies to the **`event.currentTarget`**, which is the element that has the `on-*` event listener attached to it.
-* `'source'`: The action applies to the **`activeTarget`**, which is the element that provided the data payload (as determined by the `source` attribute).
-
-#### **Browser & Storage Control**
+**Browser & Storage**
 
 | Prefix / Key | Description | Value Type(s) | Example (Groovy) |
 | :--- | :--- | :--- | :--- |
@@ -299,85 +316,122 @@ When you specify an action in a Map Transmission, you can control which element 
 | **`@back`, `@forward`** | Navigates back or forward in the browser's history. | `null` | `['@back': null]` |
 | **`@print`** | Opens the browser's print dialog. | `null` | `['@print': null]` |
 
-#### **Selector-Based Map Entries**
+#### Advanced: Action Targets (`this`, `it`, `source`)
 
-In addition to using a target attribute, Map Transmissions support selector-style keys for direct DOM updates. These selector entries always perform an innerHTML replacement on the matched element(s).
+Most of the time, actions and class operations apply to the **payload target** — the element determined by the `target` attribute. This is the default when you use `null` or omit the value.
 
-| Key Format |	Behavior |	Example |
-| :--- | :--- | :--- |
-| `#id` | Updates the element with a specific ID.	| `['#status': 'Saved!']` |
-| `> selector`	| Finds a descendant of the source element.	| `['> .details': '<p>Updated details</p>']` |
-| `< selector` |	Finds the closest ancestor of the source element.	| `['< section': '<h2>Section Removed</h2>']` |
-| `Any other selector` |	Treated as a global querySelector against the document.	| `['.notification': '<div>New Notice</div>']` |
+For **event delegation** scenarios — where the `on-*` listener is on a container but the user clicks a child — you may need to direct an action to a specific element in the event chain:
 
-These entries do not require a target attribute. The key itself determines where the content is applied. If you do specify a target on the element, both the target and the selector entries can be combined in the same transmission.
+* `'this'`: The **`event.target`** — the specific element the user actually clicked or interacted with.
+* `'it'`: The **`event.currentTarget`** — the element that has the `on-*` event listener attached to it.
+* `'source'`: The **`activeTarget`** — the element that provided the data payload (as determined by the `source` attribute).
 
-**Working Together: Targets + Selectors**
+These are rarely needed. If your element targets `self` or a specific selector, the payload target is already the right element. Use `this`/`it`/`source` when you need to distinguish between the listener, the clicked child, and the data source — typically in delegation patterns with the `source` attribute.
 
-One of the most powerful patterns is combining targeted updates with selector-based replacements.
+#### **Using Arrays**
 
-For example, you can:
-* Use a target to update the element the action is bound to (change attributes, toggle classes, disable a button, etc.).
-* At the same time, use a #id or > selector entry to update a different region of the DOM with fresh HTML.
-
-**Example:**
-
-```groovy
-// Returning from a on-click bound to a button.
-return [
-    'disabled': true,          // disables the button (targeted element)
-    '+loading': 'it',          // adds a 'loading' class to the button
-    '#order-status': 'Saving…' // updates the status display by selector
-]
-```
-
-Here, the target ensures the button reflects its new state, while the selector-based entry updates a completely separate element. This dual mechanism allows a single server action to coordinate stateful changes (attributes, classes) and content updates (innerHTML replacement) across the DOM.
-
-
-### ⛓️ The Array Transmission (`[...]`)
-
-An Array transmission is a shorthand for applying a sequence of simple, parameter-less instructions to the target element. It's perfect for managing classes and chaining basic actions.
-
-#### **Class Manipulation**
+An Array transmission applies a sequence of instructions to the target element. Each string item is an action or class operation:
 
 | Prefix | Behavior | Example (Groovy) |
 | :--- | :--- | :--- |
-| **(none)** | **Toggles** a CSS class. If it exists, it's removed; if not, it's added. | `['selected', 'active']` |
+| **`@`** | Triggers an action. All actions from the reference table above are supported: `@click`, `@focus`, `@blur`, `@select`, `@end`, `@submit`, `@reset`, `@show`, `@hide`, `@open`, `@close`, `@remove`, `@clear`, `@nudge`, `@scroll-to`, `@scroll-by`, `@scroll-into-view`, `@reload`, `@redirect`, `@back`, `@forward`, `@replace`, `@print`, `@download`, `@alert`, `@log`, `@table`. | `['@focus', '@select']` |
 | **`+`** | **Adds** a CSS class. | `['+active', '+processing']` |
 | **`-`** | **Removes** a CSS class. | `['-active', '-processing']` |
-
-#### **Chaining Actions (`@` prefix)**
-
-You can trigger a sequence of actions on the target element.
-
-  * **Supported Actions:** `@click`, `@focus`, `@blur`, `@select`, `@submit`, `@reset`, `@remove`, `@show`, `@hide`, `@scroll-to`, `@clear`, `@reload`, `@back`, `@forward`, `@print`.
-
-**Example:**
+| **(none)** | **Toggles** a CSS class. | `['selected', 'active']` |
 
 ```groovy
-// On form submission success:
-// 1. Remove the 'processing' class from the form.
-// 2. Add the 'completed' class to the form.
-// 3. Clear the text inside the '#response-message' element.
-// 4. Toggle the 'visible' class on it.
+// Remove 'processing', add 'completed', clear the target, toggle 'visible'
 return ['-processing', '+completed', '@clear', 'visible']
+```
+
+Arrays can also contain **Map items** for keyed operations — content, attributes, styles — without switching to a full map format:
+
+```groovy
+// Actions and classes as strings, content and styles as an embedded map
+return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>', '&color': 'green']]
+```
+
+This is cleaner than using a map when most of your instructions are actions or classes:
+
+```groovy
+// Map format — values are wasted on the actions/classes
+return ['+active': '', '@focus': '', '-loading': '', 'innerHTML': '<p>Done!</p>']
+
+// Array with embedded map — same result, no wasted values
+return ['+active', '@focus', '-loading', ['innerHTML': '<p>Done!</p>']]
 ```
 
 -----
 
-### 📦 The Single Value Transmission (`"string"`)
+#### **Targeting Other Elements**
 
-This is the simplest transmission format. When your server action returns a single, non-JSON value (like a plain string), it's used to directly update the content of the target element.
+So far, every operation has applied to the target element — the one determined by the `target` attribute. But a bundled transmission can also update **other elements** across the page.
 
-  * **Default Behavior:** Launchpad intelligently places the content in the `.value` property (for inputs) or the `innerHTML` (for other elements).
-  * **`target="outer"` Override:** If the triggering element has `target="outer"`, the **entire target element is replaced** by the returned string.
+**Selector Keys with Scalar Values**
 
-<!-- end list -->
+In a map, certain key prefixes target elements by selector and set their `innerHTML`:
+
+| Key Format | Behavior | Example |
+| :--- | :--- | :--- |
+| `#id` | Updates the element with a specific ID. | `['#status': 'Saved!']` |
+| `> selector` | Finds a descendant of the source element. | `['> .details': '<p>Updated details</p>']` |
+
+These work alongside regular instructions in the same map:
 
 ```groovy
-// Groovy action to get a status message
-return "Last saved: ${new Date().format('h:mm:ss a')}"
+return [
+    '+loading',                   // add class to the target (button)
+    ['disabled': true],           // set attribute on the target
+    ['#order-status': 'Saving…']  // innerHTML on a different element
+]
 ```
+
+**Selector Keys with Full Instruction Sets**
+
+When a map entry's value is an **Array or Map** (instead of a scalar), the key is treated as a selector and the value becomes a full set of operations applied to that element.
+
+**The Rule:** Scalar value → operates on the target. Array or Map value → operates on the selector.
+
+```groovy
+// Scalar value — sets innerHTML of #status
+return ['#status': 'Saved!']
+
+// Array value — applies a full instruction set to #status
+return ['#status': ['-loading', '+saved', ['innerText': 'Saved!', '&color': 'green']]]
+```
+
+Selector keys support all the same values as the `target` attribute — named targets (`parent`, `self`, `next`, `grandparent`, etc.) resolved relative to the event source, plus any CSS selector (`#id`, `.class`, `div > span`, etc.).
+
+**Example: Multi-Element Update**
+
+A single server action that updates the button, its parent, a status panel, and a notification tray:
+
+```groovy
+return [
+    '+confirmed',
+    ['disabled': true],
+    ['parent': ['-loading', '+done']],
+    ['#status-panel': ['innerHTML': '<p>Order confirmed!</p>', '&opacity': '1']],
+    ['#notification-tray': ['append': '<div class="toast">Order #1042 placed</div>']]
+]
+```
+
+String items (`+confirmed`) and embedded maps with scalar values (`disabled`) apply to the target element. Embedded maps with array/map values (`parent`, `#status-panel`, `#notification-tray`) resolve the key as a selector and apply the nested instructions to that element.
+
+**Bundled Entries in Arrays**
+
+Arrays can also carry bundled entries — just include a Map item where the keys are selectors:
+
+```groovy
+return [
+    '+active',                                        // target: add class
+    '@focus',                                         // target: focus
+    ['#tray': ['append': '<span>New item</span>']],   // #tray: append content
+    ['parent': ['-loading']]                          // parent: remove class
+]
+```
+
+String items apply to the target. Map items are processed as instructions — and if a map entry's value is an array or map, it's bundled just like in a top-level map.
 
 -----
 
@@ -387,7 +441,7 @@ Here’s how you can put these concepts together in a real Launchpad template. T
 
 ### **Example 1: Simple Action**
 
-This example uses an Array Transmission to perform a single, parameter-less action. No data is needed from the client, and the action (`@print`) affects the whole browser window.
+This example uses an array transmission to perform a single, parameter-less action. No data is needed from the client, and the action (`@print`) affects the whole browser window.
 
 ```html
 <button on-click="${ _{ [ '@print' ] }}">
@@ -428,18 +482,30 @@ This example shows a form that, upon submission, sends all its input values to t
 
 ### **Example 3: Inline Action with Contextual Data**
 
-Here, we're iterating through a list of participants. The `on-click` action needs to know *which* participant to remove. We pass the unique `participant.cookie` from the current loop iteration directly into the server-side `removeParticipant` method. The transmission then targets the parent `<div>` and removes it from the page, providing instant feedback.
+Here, we're iterating through a list of participants. The `on-click` action needs to know *which* participant to remove. We pass the unique `participant.cookie` from the current loop iteration directly into the server-side `removeParticipant` method. The transmission removes the entry from the page and updates the participant count — all in one response.
 
 ```html
+<h3>Participants (<span id="participant-count">${ participants.size() }</span>)</h3>
+
 <div class='participant-entry'>
     <strong>${ participant.name }</strong>
 
     <span target='parent' style='cursor: pointer;'
-          on-click=${ _{ gb.removeParticipant(participant.cookie); [ '@remove' ] }}>
+          on-click=${ _{ 
+              gb.removeParticipant(participant.cookie)
+              return [
+                  '@remove',
+                  ['#participant-count': [
+                      'innerText': gb.fetchParticipants().size()
+                  ]]
+              ]
+          }}>
         🗑️
     </span>
 </div>
 ```
+
+The array transmission removes the parent element (`@remove`), then the embedded map targets `#participant-count` to update the displayed count. Previously, you'd need a separate mechanism to keep the count in sync.
 
 
 ## **UI/UX Pattern Examples**
@@ -493,48 +559,39 @@ This pattern allows users to click an "Edit" button to turn a piece of text into
 
 ### **Pattern 2: "Load More" Button**
 
-This pattern is used for paginating through a long list of items without full page reloads. It uses the `append` transmission to add new items to the list and can hide itself when there's no more data.
+This pattern paginates through a list without full page reloads. Using a bundled transmission, one response appends items to the list, updates the button's state, and shows a count — all targeting different elements.
 
 ```groovy
 <%
-    // Server-side function to fetch a "page" of items
     def getItems = { page = 0, perPage = 5 ->
-        // In a real app, this would be a database query
         def allItems = (1..20).collect { "Item #$it" }
         def start = page * perPage
         def end = Math.min(start + perPage, allItems.size())
-        if (start >= allItems.size()) return [:]
-        return [
-            items: allItems[start..<end],
-            hasMore: end < allItems.size()
-        ]
+        if (start >= allItems.size()) return [items: [], hasMore: false, total: allItems.size()]
+        return [items: allItems[start..<end], hasMore: end < allItems.size(), total: allItems.size()]
     }
 
-    // Closure for the button's on-click event
     def loadMoreItems = { t ->
-        // Get the next page number from the button's data attribute
-        def nextPage = t.page.toInteger()
+        def nextPage = t.getInteger('page')
         def results = getItems(nextPage)
+        def newItemsHtml = results.items.combine { "<li>${it}</li>" }
 
-        // Build the HTML for the new items
-        def newItemsHtml = results.items.collect { "<li>${it}</li>" }.join('')
-
-        // Build the transmission
+        // One response targets the list, the button, and the count
         def transmission = [
-            // Use 'append' on the <ul> to add the new items
-            append: newItemsHtml,
-            // Update the button's data-page attribute for the next click
-            '#page': nextPage + 1
+            '#item-list': ['append': newItemsHtml],
+            '*page': nextPage + 1,
+            '#item-count': "Showing ${Math.min((nextPage + 1) * 5, results.total)} of ${results.total}"
         ]
 
-        // If there are no more items, add an instruction to hide the button
         if (!results.hasMore) {
-            transmission['@hide'] = 'it' // 'it' refers to the button itself
+            transmission['@hide'] = null
         }
 
         return transmission
     }
 %>
+
+<p id="item-count">Showing 5 of 20</p>
 
 <ul id="item-list">
     <% getItems().items.each { item -> %>
@@ -542,9 +599,130 @@ This pattern is used for paginating through a long list of items without full pa
     <% } %>
 </ul>
 
-<button target="#item-list"
+<button target="self"
         data-page="1"
         on-click=${ _{ t -> loadMoreItems(t) }}>
     Load More
 </button>
 ```
+
+Notice the button targets `self` now — it doesn't need to be aimed at the list because the bundled entry `'#item-list': ['append': ...]` handles that. The button manages its own state (`*page`, `@hide`) while the list and count are updated by selector.
+
+### **Pattern 3: Form Validation with Per-Field Errors**
+
+Bundled transmissions make server-side form validation clean — one response can mark individual fields as invalid, show per-field error messages, and update a summary, all without any client-side JavaScript.
+
+```groovy
+<%
+    def validateSignup = { t ->
+        def errors = [:]
+        if (!t.getString('email')?.contains('@')) errors.email = 'Please enter a valid email'
+        if (t.getString('password')?.length() < 8) errors.password = 'Must be at least 8 characters'
+        if (t.getString('password') != t.getString('confirm')) errors.confirm = 'Passwords do not match'
+
+        if (errors) {
+            // Build a bundled transmission targeting each error span
+            def transmission = ['-loading': null]
+            errors.each { field, message ->
+                // Target the error span next to each input and the input itself
+                transmission["#${field}-error"] = message
+                transmission["#${field}-input"] = ['+invalid', ['*error': message]]
+            }
+            transmission['#form-status'] = [
+                '+has-errors',
+                ['innerHTML': "${errors.size()} field(s) need attention"]
+            ]
+            return transmission
+        }
+
+        // Success — create the account and show confirmation
+        createAccount(t.getString('email'), t.getString('password'))
+        return [
+            '@redirect': '/welcome'
+        ]
+    }
+%>
+
+<form on-submit=${ _{ t -> validateSignup(t) }} target="self">
+    <div>
+        <input id="email-input" name="email" placeholder="Email">
+        <span id="email-error" class="error"></span>
+    </div>
+    <div>
+        <input id="password-input" name="password" type="password" placeholder="Password">
+        <span id="password-error" class="error"></span>
+    </div>
+    <div>
+        <input id="confirm-input" name="confirm" type="password" placeholder="Confirm">
+        <span id="confirm-error" class="error"></span>
+    </div>
+    <div id="form-status"></div>
+    <button type="submit">Sign Up</button>
+</form>
+```
+
+Each field gets its error message set via `#field-error` selector, and the input itself gets an `invalid` class and a data attribute via bundled instructions. Previously, you'd need to pick a single target for the transmission and handle the rest with client-side code.
+
+### **Pattern 4: Coordinated Multi-Element Update**
+
+This pattern shows how a single form submission can update multiple regions of the page at once — the form itself, a results panel, and a status bar — using a bundled transmission.
+
+```groovy
+<%
+    def submitSearch = { t ->
+        def query = t.getString('query')
+        def results = searchService.find(query)
+        def resultsHtml = results.combine { """
+            <div class="result">
+                <strong>${ it.title }</strong>
+                <p>${ it.snippet }</p>
+            </div>
+        """ }
+
+        return [
+            // Target element (the form): disable while showing results
+            '@clear': 'source',
+
+            // Bundled: update the results panel with full instruction set
+            '#results-panel': [
+                '+has-results',
+                '-empty',
+                ['innerHTML': resultsHtml, '*query': query]
+            ],
+
+            // Bundled: update the status bar
+            '#status-bar': ['innerText': "${results.size()} results for '${query}'"]
+        ]
+    }
+%>
+
+<form on-submit=${ _{ t -> submitSearch(t) }} target="self">
+    <input name="query" placeholder="Search...">
+    <button type="submit">Search</button>
+</form>
+
+<div id="results-panel" class="empty"></div>
+<div id="status-bar"></div>
+```
+
+**What's Happening?**
+
+1. `'@clear': 'source'` is a scalar value — it clears the form's input (the source element).
+2. `'#results-panel': ['+has-results', '-empty', ['innerHTML': ..., '*query': ...]]` has an Array value — so `#results-panel` is resolved as a selector. The array is applied as a sequence: add a class, remove a class, then set innerHTML and a data attribute via the embedded map.
+3. `'#status-bar': ['innerText': "..."]` has a Map value — resolved as a selector, then the inner map sets the text content.
+
+All three updates happen from a single server response — no extra requests, no client-side JavaScript.
+
+-----
+
+## **What's Next**
+
+This handbook covers the client-side transmission system — what HUD-Core does with the payloads your server sends back. But transmissions are just one piece of the Spaceport + Launchpad stack.
+
+To go deeper:
+
+  * **[Spaceport Documentation](https://spaceport.sh/docs)** — the full framework manual covering routing, documents, alerts, server elements, and more.
+  * **[Launchpad](https://spaceport.sh/docs/launchpad)** — the server-side templating engine that generates transmissions, manages reactive state, and handles the WebSocket connection.
+  * **[Port Mercury](https://github.com/spaceport-dev/port-mercury/)** — a starter kit to see transmissions in action within a real project structure.
+  * **[create-spaceport-app](https://github.com/spaceport-dev/create-spaceport-app)** — scaffold a new project with agentic development tooling and documentation built in.
+  * **[Guestbook.ing](https://github.com/aufdemrand/guestbook.ing/)** — a small real-world app with annotated examples of transmissions, server elements, and other Spaceport features.
