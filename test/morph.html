@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>HUD-Core — morph tests</title>
+</head>
+<body>
+
+<!-- Open this file over HTTP (not file://) and read the line below, or drive it
+     headless:
+
+         python3 -m http.server 8000
+         chromium --headless --disable-gpu --virtual-time-budget=5000 \
+                  --dump-dom http://127.0.0.1:8000/test/morph.html | grep 'id="out"'
+-->
+
+<div id="out">DID-NOT-RUN</div>
+
+<script>
+window.onerror = function(m, s, l, c) {
+  document.getElementById('out').textContent = 'ERROR: ' + m + ' @' + s + ':' + l + ':' + c
+  return true
+}
+window.addEventListener('unhandledrejection', function(e) {
+  document.getElementById('out').textContent = 'REJECTED: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)
+})
+</script>
+
+<script src="../hud-core.js"></script>
+
+<script>
+// Run the suite only once hud-core has initialised, so its MutationObserver is
+// live for every test rather than only the ones that happen to await.
+window.addEventListener('load', function() {
+  var s = document.createElement('script')
+  s.src = 'morph.js'
+  document.body.appendChild(s)
+})
+</script>
+
+</body>
+</html>
