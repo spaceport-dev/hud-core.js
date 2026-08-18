@@ -1,4 +1,4 @@
-// HUD-CORE v1.2.0
+// HUD-CORE v1.3.0
 
 // This file enabled web-HUD features for Launchpad, the reative
 // templating engine for Spaceport. Include this file in your
@@ -50,39 +50,40 @@ function sendData(id, data) {
 //
 
 
+// Cleans up Server Elements, their window declaration, also listeners that were registered
+// with .listen(), and run a user-defined deconstructed event (if necessary)
+function cleanupLaunchpadElement(element) {
+    const elementId = element.getAttribute('element-id');
+    
+    // Look up the global component instance (e.g., window.element_456)
+    const componentInstance = window[`element_${elementId}`];
+
+    if (componentInstance) {
+        if (componentInstance._listeners && Array.isArray(componentInstance._listeners)) {
+            componentInstance._listeners.forEach(listener => {
+                // Use the stored references to remove the listeners
+                element.removeEventListener(listener.type, listener.handler, listener.options);
+            });
+            // Clear the array to free up memory
+            componentInstance._listeners.length = 0;
+        }
+        if (componentInstance.deconstructed) {
+            try {
+                // Developers use this for timers, window events, or other "crazy" tasks.
+                componentInstance.deconstructed(componentInstance);
+            } catch (e) {
+                console.error(`Error in deconstructed() hook for element ${elementId}:`, e);
+            }
+        }
+        delete window[`element_${elementId}`];
+    }
+}
+
+
 document.addEventListener('DOMContentLoaded', function() {
 
     // Scan DOM for 'comment' nodes and parse for document data
     scanForComments(document)
-
-    // Cleans up Server Elements, their window declaration, also listeners that were registered
-    // with .listen(), and run a user-defined deconstructed event (if necessary)
-    function cleanupLaunchpadElement(element) {
-        const elementId = element.getAttribute('element-id');
-        
-        // Look up the global component instance (e.g., window.element_456)
-        const componentInstance = window[`element_${elementId}`];
-    
-        if (componentInstance) {
-            if (componentInstance._listeners && Array.isArray(componentInstance._listeners)) {
-                componentInstance._listeners.forEach(listener => {
-                    // Use the stored references to remove the listeners
-                    element.removeEventListener(listener.type, listener.handler, listener.options);
-                });
-                // Clear the array to free up memory
-                componentInstance._listeners.length = 0;
-            }
-            if (componentInstance.deconstructed) {
-                try {
-                    // Developers use this for timers, window events, or other "crazy" tasks.
-                    componentInstance.deconstructed(componentInstance);
-                } catch (e) {
-                    console.error(`Error in deconstructed() hook for element ${elementId}:`, e);
-                }
-            }
-            delete window[`element_${elementId}`];
-        }
-    }
 
     // Watch for mutations
     const observer = new MutationObserver(function(mutations) {
@@ -99,6 +100,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     // Node type 1 is an element
                     if (node.nodeType === Node.ELEMENT_NODE) {
+
+                        // Repositioned by a morph pass, not new. It is already
+                        // wired up, and the setup below would double its listeners.
+                        if (node.hudMoved) {
+                            delete node.hudMoved
+                            return
+                        }
 
                         //
                         // ELEMENT (PARENT)
@@ -203,6 +211,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Node type 1 is an element
                     if (node.nodeType === Node.ELEMENT_NODE) {
 
+                        // The removal half of a morph pass repositioning this node.
+                        // It is still on the page, so nothing is torn down here.
+                        // The matching addition record clears the flag.
+                        if (node.hudMoved) { return }
+
                         // Check if the removed node itself is a Launchpad Element
                         if (node.hasAttribute('element-id')) {
                              cleanupLaunchpadElement(node);
@@ -303,6 +316,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Observe the entire document for mutations, apply appropriate changes
     observer.observe(document.body, config)
+
+    // Morph reactive updates instead of replacing them
+    installReactionMorph()
 
 })
 
@@ -569,13 +585,13 @@ function applyInstructions(target, payload, context) {
     if (typeof payload === 'string' || (payload != null && !(payload instanceof Object) && !Array.isArray(payload))) {
         if (target == null) return
         if (context.outerMode) {
-            target.outerHTML = payload
+            morphOuter(target, payload)
         } else if (target.value) {
             target.value = payload
         } else if (target.setValue) {
             target.setValue(payload)
         } else {
-            target.innerHTML = payload
+            morphInner(target, payload)
         }
         return
     }
@@ -620,8 +636,8 @@ function applyInstructions(target, payload, context) {
 
         // Content operations
         else if (key === 'value') { target.value = value }
-        else if (key === 'innerHTML') { target.innerHTML = value }
-        else if (key === 'outerHTML') { target.outerHTML = value }
+        else if (key === 'innerHTML') { morphInner(target, value) }
+        else if (key === 'outerHTML') { morphOuter(target, value) }
         else if (key === 'innerText') { target.innerText = value }
         else if (key === 'append') { target.insertAdjacentHTML('beforeend', value) }
         else if (key === 'prepend') { target.insertAdjacentHTML('afterbegin', value) }
@@ -660,13 +676,13 @@ function applyInstructions(target, payload, context) {
         // Element by ID — innerHTML shorthand
         else if (key.startsWith('#')) {
             const el = document.getElementById(key.substring(1))
-            if (el) el.innerHTML = value
+            if (el) morphInner(el, value)
         }
 
         // Descendant selector — innerHTML shorthand
         else if (key.startsWith('>')) {
             const el = context.activeTarget.querySelector(key.substring(1))
-            if (el) el.innerHTML = value
+            if (el) morphInner(el, value)
         }
 
         // Default: set as HTML attribute (null removes it)
@@ -676,6 +692,431 @@ function applyInstructions(target, payload, context) {
         }
     }
 }
+
+//
+//
+// Targeted DOM Morphing
+//
+//
+
+
+// Applies incoming HTML by updating the live DOM in place instead of replacing
+// it. Assigning a payload to innerHTML destroys and rebuilds every node in the
+// subtree, including the ones that did not change, which loses focus, selection,
+// scroll position and open dialog state, and churns every Launchpad binding
+// underneath. The functions below write only the nodes that actually differ.
+// Note: set window.HUD_MORPH = false to go back to replacing.
+
+
+// Attributes hud-core sets itself. The server never sends them, so they are not
+// stripped from a node that survives a pass.
+const HUD_RUNTIME_ATTRIBUTES = new Set(['loading', 'fatal-error', 'x-display', 'lp-uuid'])
+
+
+// The comments Launchpad delimits a reactive block with.
+const CHUNK_MARKER = /^\s*(START_CHUNK|END_CHUNK)@/
+
+
+function morphEnabled() {
+    return window.HUD_MORPH !== false
+}
+
+
+// Per-pass bookkeeping. Orphaned bindings are collected rather than released one
+// at a time, so a pass costs one round-trip instead of one per node.
+function newMorphPass() {
+    return { staleUUIDs: new Set(), changedComments: [] }
+}
+
+
+// Releases the bindings this pass orphaned, and re-reads any CDATA comment whose
+// value was edited in place.
+function finishMorphPass(pass) {
+
+    // A surviving node adopts the uuid the server minted on this render, leaving
+    // the one it used to carry registered with nothing pointing at it. The
+    // MutationObserver never saw the node leave, so it cannot release it.
+    if (pass.staleUUIDs.size > 0) {
+        fetch('/!/lp/bind/u/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uuids: Array.from(pass.staleUUIDs) })
+        })
+    }
+
+    // The observer watches childList and attributes, not characterData.
+    pass.changedComments.forEach(comment => parseForDocumentData(comment))
+}
+
+
+// A node's identity across renders. element-id and lp-uuid are NOT used for
+// this: Launchpad mints fresh ones every render, so they identify a render.
+function morphKey(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return null
+    return node.getAttribute('key') || node.id || null
+}
+
+
+// Whether an existing node can be updated into the incoming one, rather than
+// being discarded and replaced.
+function isSoftMatch(oldNode, newNode) {
+    if (!oldNode || !newNode) return false
+    if (oldNode.nodeType !== newNode.nodeType) return false
+
+    if (oldNode.nodeType === Node.ELEMENT_NODE) {
+        if (oldNode.tagName !== newNode.tagName) return false
+        if (oldNode.namespaceURI !== newNode.namespaceURI) return false
+
+        const oldKey = morphKey(oldNode)
+        const newKey = morphKey(newNode)
+        if (oldKey || newKey) return oldKey === newKey
+        return true
+    }
+
+    // A START marker must never be updated into an END marker, or the block's
+    // boundaries move.
+    if (oldNode.nodeType === Node.COMMENT_NODE) {
+        const oldMarker = CHUNK_MARKER.exec(oldNode.nodeValue)
+        const newMarker = CHUNK_MARKER.exec(newNode.nodeValue)
+        if (oldMarker || newMarker) {
+            return !!oldMarker && !!newMarker && oldMarker[1] === newMarker[1]
+        }
+    }
+
+    return true
+}
+
+
+// Parses HTML in the right parsing context, so a fragment that is only legal
+// inside a particular parent (<tr>, <option>, an SVG child) is not dropped.
+function parseInContext(html, contextNode) {
+    const context = contextNode.nodeType === Node.ELEMENT_NODE ? contextNode : contextNode.parentElement
+    const doc = contextNode.ownerDocument || document
+
+    let container
+    if (context && context.namespaceURI && context.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
+        container = doc.createElementNS(context.namespaceURI, context.localName)
+    } else {
+        try {
+            container = doc.createElement(context ? context.tagName : 'div')
+        } catch (e) {
+            container = doc.createElement('div')
+        }
+    }
+
+    container.innerHTML = html == null ? '' : String(html)
+    return container
+}
+
+
+// Brings a surviving element's attributes in line with the incoming one.
+function syncAttributes(oldEl, newEl, pass) {
+
+    for (let i = 0; i < newEl.attributes.length; i++) {
+        const name = newEl.attributes[i].name
+        const value = newEl.attributes[i].value
+        if (oldEl.getAttribute(name) === value) continue
+
+        // A new element-id means a new Server Element instance. Retire the old
+        // one first, or its listeners and deconstructed() hook never run.
+        if (name === 'element-id' && oldEl.hasAttribute('element-id')) {
+            cleanupLaunchpadElement(oldEl)
+        }
+
+        // Wiring happens when the observer sees a node arrive, and a surviving
+        // node never arrives, so an attribute gained here is wired on the spot.
+        // Each of these setup calls is idempotent.
+        const gained = !oldEl.hasAttribute(name)
+
+        oldEl.setAttribute(name, value)
+
+        if (gained) {
+            if (builtInEvents.indexOf(name) !== -1) { setupOnAttribute(name.substring(3), oldEl) }
+            else if (name === 'href') { setupHREF(oldEl) }
+            else if (name === 'onnudge') { shimOnNudge(oldEl) }
+        }
+    }
+
+    // Backwards: removeAttribute() mutates the live NamedNodeMap being walked.
+    for (let i = oldEl.attributes.length - 1; i >= 0; i--) {
+        const name = oldEl.attributes[i].name
+        if (newEl.hasAttribute(name)) continue
+        if (HUD_RUNTIME_ATTRIBUTES.has(name)) continue
+
+        if (name === 'element-id') { cleanupLaunchpadElement(oldEl) }
+
+        oldEl.removeAttribute(name)
+    }
+}
+
+
+// Re-derives lp-uuid, which setupOnAttribute sets from the on-* endpoint rather
+// than the server sending it, and releases the uuid it replaces.
+function syncBindingUUID(oldEl, pass) {
+    let endpoint = null
+
+    for (let i = 0; i < builtInEvents.length; i++) {
+        if (oldEl.hasAttribute(builtInEvents[i])) {
+            endpoint = oldEl.getAttribute(builtInEvents[i])
+            break
+        }
+    }
+
+    if (endpoint == null) return
+
+    const uuid = endpoint.replace('/!/lp/bind?uuid=', '')
+    const previous = oldEl.getAttribute('lp-uuid')
+    if (previous === uuid) return
+
+    if (previous) pass.staleUUIDs.add(previous)
+    oldEl.setAttribute('lp-uuid', uuid)
+}
+
+
+// Syncs the live value of a form control, which its attributes do not carry.
+// Anything the user is currently editing is left alone; everything else is set
+// to what the server sent.
+function syncLiveProperties(oldEl, newEl) {
+    if (oldEl === document.activeElement) return
+
+    if (oldEl.tagName === 'INPUT') {
+        if (oldEl.type === 'checkbox' || oldEl.type === 'radio') {
+            const checked = newEl.hasAttribute('checked')
+            if (oldEl.checked !== checked) oldEl.checked = checked
+        } else if (newEl.hasAttribute('value')) {
+            const value = newEl.getAttribute('value')
+            if (oldEl.value !== value) oldEl.value = value
+        }
+    } else if (oldEl.tagName === 'TEXTAREA') {
+        if (oldEl.value !== newEl.textContent) oldEl.value = newEl.textContent
+    } else if (oldEl.tagName === 'OPTION') {
+        const selected = newEl.hasAttribute('selected')
+        if (oldEl.selected !== selected) oldEl.selected = selected
+    }
+}
+
+
+// Updates one surviving node in place. Callers establish the soft match first.
+function morphNode(oldNode, newNode, pass) {
+
+    if (oldNode.nodeType === Node.ELEMENT_NODE) {
+
+        // Opt-out, for a subtree the page maintains itself.
+        if (oldNode.hasAttribute('hud-preserve')) return
+
+        // A SCRIPT is evaluated by the observer when it is inserted, so one that
+        // survives a pass never runs again. A changed script has to arrive as a
+        // new node to run at all.
+        if (oldNode.tagName === 'SCRIPT') {
+            if (oldNode.textContent !== newNode.textContent) {
+                oldNode.parentNode.replaceChild(newNode, oldNode)
+            }
+            return
+        }
+
+        syncAttributes(oldNode, newNode, pass)
+        syncBindingUUID(oldNode, pass)
+        syncLiveProperties(oldNode, newNode)
+        morphChildren(oldNode, newNode, pass, oldNode.firstChild, null)
+        return
+    }
+
+    // Text and comment nodes carry a value and no structure.
+    if (oldNode.nodeValue !== newNode.nodeValue) {
+        oldNode.nodeValue = newNode.nodeValue
+        if (oldNode.nodeType === Node.COMMENT_NODE) pass.changedComments.push(oldNode)
+    }
+}
+
+
+// Reconciles a run of existing children against newParent's children.
+//   parent:     the element being updated
+//   newParent:  the parsed incoming markup, whose children are the target state
+//   firstOld:   first existing node to consider
+//   stopBefore: node to stop at, exclusive; null for the end of the parent
+function morphChildren(parent, newParent, pass, firstOld, stopBefore) {
+
+    // Index the keyed children up front, so a row that moved is matched as the
+    // same row rather than diffed against whatever now sits in its slot. Without
+    // it, one row inserted at the top reads as "every row changed", which can put
+    // one row's values under another row's heading on the way past.
+    const keyed = new Map()
+    for (let node = firstOld; node && node !== stopBefore; node = node.nextSibling) {
+        const key = morphKey(node)
+        if (key && !keyed.has(key)) keyed.set(key, node)
+    }
+
+    let oldNode = firstOld
+    let newNode = newParent.firstChild
+
+    while (newNode) {
+        const nextNew = newNode.nextSibling
+        if (oldNode === stopBefore) oldNode = null
+
+        const newKey = morphKey(newNode)
+
+        // 1. The incoming node names a node already on the page, wherever it sits.
+        if (newKey && keyed.has(newKey)) {
+            const matched = keyed.get(newKey)
+            keyed.delete(newKey)
+
+            if (matched === oldNode) {
+                oldNode = oldNode.nextSibling
+            } else {
+                // Repositioning a node is reported by the observer as a removal
+                // then an addition. Unflagged, the removal unregisters a binding
+                // that is still on the page and the addition binds a second
+                // listener over the first.
+                matched.hudMoved = true
+                parent.insertBefore(matched, oldNode || stopBefore)
+            }
+
+            morphNode(matched, newNode, pass)
+            newNode = nextNew
+            continue
+        }
+
+        // 2. Otherwise pair it with whatever sits in the same position, unless
+        //    that node is spoken for by a key of its own.
+        if (oldNode && !morphKey(oldNode) && isSoftMatch(oldNode, newNode)) {
+            const nextOld = oldNode.nextSibling
+            morphNode(oldNode, newNode, pass)
+            oldNode = nextOld
+            newNode = nextNew
+            continue
+        }
+
+        // 3. Nothing on the page corresponds to it, so it is new.
+        parent.insertBefore(newNode, oldNode || stopBefore)
+        newNode = nextNew
+    }
+
+    // Anything still ahead of the cursor was not in the incoming payload.
+    while (oldNode && oldNode !== stopBefore) {
+        const nextOld = oldNode.nextSibling
+        parent.removeChild(oldNode)
+        oldNode = nextOld
+    }
+
+    // Keyed nodes the payload never claimed, sitting behind the cursor.
+    keyed.forEach(node => {
+        if (node.parentNode === parent) parent.removeChild(node)
+    })
+}
+
+
+// Applies HTML as the contents of target, writing only what differs.
+function morphInner(target, html) {
+    if (target == null) return
+
+    if (!morphEnabled()) {
+        target.innerHTML = html
+        return
+    }
+
+    const incoming = parseInContext(html, target)
+    const pass = newMorphPass()
+    morphChildren(target, incoming, pass, target.firstChild, null)
+    finishMorphPass(pass)
+}
+
+
+// Applies HTML in place of target itself. Falls back to replacing unless the
+// payload is a single node that can update the target where it stands.
+function morphOuter(target, html) {
+    if (target == null) return
+
+    const parent = target.parentNode
+    if (!morphEnabled() || !parent) {
+        target.outerHTML = html
+        return
+    }
+
+    const incoming = parseInContext(html, parent)
+    const only = incoming.childNodes.length === 1 ? incoming.firstChild : null
+
+    if (only && isSoftMatch(target, only)) {
+        const pass = newMorphPass()
+        morphNode(target, only, pass)
+        finishMorphPass(pass)
+    } else {
+        target.outerHTML = html
+    }
+}
+
+
+// Applies HTML to the run of nodes between a reactive block's chunk comments.
+function morphChunk(startComment, endComment, html) {
+    const parent = startComment.parentNode
+    const incoming = parseInContext(html, parent)
+    const pass = newMorphPass()
+    morphChildren(parent, incoming, pass, startComment.nextSibling, endComment)
+    finishMorphPass(pass)
+}
+
+
+// Locates the comment pair delimiting a reactive block.
+function findChunkComments(uuid) {
+    const comments = document.createNodeIterator(document.body, NodeFilter.SHOW_COMMENT)
+
+    let start = null
+    let comment
+
+    while (comment = comments.nextNode()) {
+        const value = comment.nodeValue.trim()
+
+        if (value === 'START_CHUNK@' + uuid) {
+            start = comment
+        } else if (value === 'END_CHUNK@' + uuid) {
+            if (start && start.parentNode === comment.parentNode) {
+                return { start: start, end: comment }
+            }
+            return null
+        }
+    }
+
+    return null
+}
+
+
+// Takes over the socket's applyReaction handler so a reactive update morphs its
+// chunk range instead of replacing it. Launchpad emits that handler with the
+// page rather than defining it here, so it is wrapped, not edited.
+function installReactionMorph(attempt) {
+    const tries = attempt || 0
+
+    // The socket script is only emitted for a launch that has bindings, and on a
+    // relaunch may be attached after this file has initialised.
+    if (typeof socket === 'undefined' || socket == null) {
+        if (tries < 20) setTimeout(function() { installReactionMorph(tries + 1) }, 50)
+        return
+    }
+
+    if (socket.hudMorphInstalled) return
+
+    const original = socket.onmessage
+
+    socket.onmessage = function(event) {
+        let data = null
+        try { data = JSON.parse(event.data) } catch (e) { }
+
+        if (data && data.action === 'applyReaction' && morphEnabled()) {
+            const chunk = findChunkComments(data.uuid)
+            if (chunk) {
+                console.log('Morphing Reaction: ' + event.data.length + ' bytes')
+                morphChunk(chunk.start, chunk.end, data.payload)
+                return
+            }
+        }
+
+        if (typeof original === 'function') original.call(this, event)
+    }
+
+    socket.hudMorphInstalled = true
+    console.log('HUD-CORE: reactive updates are morphed, not swapped.')
+}
+
+
 
 // Parses an event to determine the payloadTarget element
 function getTargetElement(event) {
@@ -708,22 +1149,40 @@ function getTargetElement(event) {
 function setupOnAttribute(eventName, element) {
     // Determine the ENDPOINT
     const endpoint = element.getAttribute('on-' + eventName)
-    // Add event listener to the element
+    if (endpoint == null) { return }
+
+    element.setAttribute('lp-uuid', endpoint.replace('/!/lp/bind?uuid=', ''))
+
+    // Idempotent per event name. A node that survives a morph can be handed here
+    // again, and a second listener would fire the action twice.
+    if (!element.hudBoundEvents) { element.hudBoundEvents = {} }
+    if (element.hudBoundEvents[eventName]) { return }
+    element.hudBoundEvents[eventName] = true
+
+    // Add event listener to the element. The endpoint is re-read on dispatch
+    // rather than captured here: an element that survives a morph keeps this one
+    // listener while the server hands it a fresh uuid on every render.
     element.addEventListener(eventName, event => {
-        fetchDataAndUpdate(event, endpoint)
+        const current = element.getAttribute('on-' + eventName)
+
+        // The server can also drop an on-* attribute from a node that stays on
+        // the page. With it gone there is no action left to fire.
+        if (current == null) { return }
+
+        fetchDataAndUpdate(event, current)
         // If the event is 'SUBMIT' and the element is a form, then also prevent the default form submission
         if (eventName === 'submit' && element.tagName === 'FORM') {
             event.preventDefault()
         }
         // if the event is 'CHANGE' and the element is an input, then also listen for the ENTER key to BLUR the input
-        if (eventName === 'change' && element.tagName === 'INPUT') {
+        if (eventName === 'change' && element.tagName === 'INPUT' && !element.hudBoundEvents.enterToBlur) {
             // console.log('ON-CHANGE + INPUT: Adding BLUR input on enter.')
+            element.hudBoundEvents.enterToBlur = true
             element.addEventListener('keydown', event => {
                 if (event.key === 'Enter') { event.currentTarget.blur() }
             })
         }
     })
-    element.setAttribute('lp-uuid', endpoint.replace('/!/lp/bind?uuid=', ''))
 }
 
 
@@ -1179,6 +1638,11 @@ async function fileToBase64(file) {
 // Binds click functionality for global HREF attribute
 function setupHREF(element) {
     if (element.tagName !== 'A') {
+        // Idempotent, like setupOnAttribute: a node that survives a morph can be
+        // offered to this function more than once.
+        if (element.hudHrefBound) { return }
+        element.hudHrefBound = true
+
         element.addEventListener('click', event => {
             let ell = event.target
             out:
