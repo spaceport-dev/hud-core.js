@@ -238,6 +238,69 @@ The `outer` value is a special modifier. It targets the element itself (just lik
 
 -----
 
+## **The `key` Attribute: Preserving Elements Across Updates**
+
+When a transmission delivers new content, Launchpad does not throw the old content away and rebuild it. It compares the incoming HTML against what is already on the page and writes **only the parts that actually differ** — an unchanged element is left exactly where it is, along with everything the browser is keeping for it: focus, the user's text selection, scroll position, an open `<dialog>`, and any CSS transition mid-flight.
+
+For most updates this is invisible and needs nothing from you. It matters when you return a **list**, because Launchpad has to decide which incoming row corresponds to which row already on screen. Left to itself it pairs them up **by position**. That is fine while the list only changes in place, but the moment a row is inserted, removed, or reordered, every row after it shifts onto its neighbour's element — and the browser state above goes with it.
+
+The `key` attribute tells Launchpad which row is which, so a row that moves is *moved* rather than rewritten.
+
+```groovy
+def renderTasks = { tasks ->
+    tasks.combine { task ->
+        """<div class="task" key="${ task.id }">
+               <span class="name">${ task.name }</span>
+               <input class="note" value="${ task.note }">
+           </div>"""
+    }
+}
+```
+
+That is the entire change: one attribute on each row's outermost element.
+
+To see what it buys you, picture three tasks — `alpha`, `bravo`, `charlie` — where the user has clicked into **alpha's** note field and typed something. The server then re-renders the list with alpha deleted. Both versions draw the correct two rows:
+
+| | rows drawn | where the cursor ends up | the typed text |
+| :--- | :--- | :--- | :--- |
+| **Without `key`** | bravo, charlie | **bravo's** note field | **moved into bravo's row** |
+| **With `key`** | bravo, charlie | nowhere | removed along with alpha |
+
+Without a key, alpha's `<div>` is recycled to draw bravo, so the cursor and the note the user was writing about alpha silently become part of a different task, with nothing on screen to say so. With a key, alpha's row leaves and takes its own state with it, while bravo and charlie keep their elements untouched.
+
+### **Choosing a key**
+
+A key has one job: to be **the same string for the same row on every render**, and different from its siblings. It only has to be unique among the element's siblings, not across the whole page.
+
+| Key | Verdict |
+| :--- | :--- |
+| **`key="${ task.id }"`** | A database id, or anything else that belongs to the record for its whole life. This is what you want. |
+| **`key="${ order.number }"`** | A natural key is fine, so long as it is the record's identity and cannot change under you. |
+| **`key="${ i }"`** | A loop index shifts the moment anything is inserted or removed, which is the exact case keys exist for. No better than leaving it off. |
+| **`key="${ task.name }"`** *(when names are editable)* | Renaming the record rebuilds its row and drops whatever state was in it. |
+
+If an element has no `key`, its `id` is used instead — so anything you have already given a stable `id` is keyed for free. Be careful with the inverse: an `id` that is **generated fresh on every render** never matches the one on the page, so every such element is rebuilt on every update. That is worse than having no key at all, and it is worth checking for if a list seems to lose state more eagerly than it should.
+
+One rule of thumb: **key every sibling in a list, or none of them.** Mixing is harmless while the list's shape is stable, but an unkeyed incoming element will not adopt a keyed one already on the page, so adding or removing `key` costs one rebuild on the next update.
+
+Keys earn the most in a `${{ }}` reaction, since those re-render on a cadence rather than only when somebody clicks something. A keyed grid that refreshes every few seconds can go an entire session without rebuilding a single element.
+
+### **Opting out with `hud-preserve`**
+
+Some elements are not the server's to redraw — a chart you have drawn onto a `<canvas>`, a map, a rich text editor, anything a client-side library has taken ownership of. Put `hud-preserve` on such an element and Launchpad will leave it and everything inside it completely alone:
+
+```html
+<div id="revenue-chart" hud-preserve></div>
+```
+
+It protects the element's **contents, not its existence**. If a transmission's markup no longer contains that element at all, it is still removed — `hud-preserve` says "do not redraw this", not "this element is permanent".
+
+### **Turning it off**
+
+Setting `window.HUD_MORPH = false` in the browser console makes Launchpad go back to replacing content outright, on the page you are looking at, without reloading it. It is the quickest way to work out whether something you are seeing comes from what the server sent or from how it was applied: if the behaviour is identical with it off, the transmission itself is what to look at.
+
+-----
+
 ## **Transmission Formats**
 
 ### 📦 Single Value Transmissions
